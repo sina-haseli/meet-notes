@@ -21,3 +21,17 @@ def make_tone(tmp_path_factory):
         return out
 
     return _make
+
+
+@pytest.fixture
+def chunk_at_600s(tmp_path):
+    from meetnotes.audio import Chunk
+    return Chunk(1, tmp_path / "chunk_1.mp3", 600000, 605000)
+
+
+@pytest.fixture
+def tiny_chunk(tmp_path):
+    from meetnotes.audio import Chunk
+    p = tmp_path / "tiny.mp3"
+    p.write_bytes(b"ID3fakeaudio")
+    return Chunk(0, p, 0, 1000)
