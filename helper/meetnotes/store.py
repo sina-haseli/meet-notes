@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-_ILLEGAL_OR_SPACE = re.compile(r'[<>:"/\|?*\x00-\x1f\s]+')
+_ILLEGAL_OR_SPACE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]+')
 
 
 def slugify(title: str) -> str:
