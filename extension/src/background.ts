@@ -14,6 +14,7 @@ import type {
 } from "./messages";
 import { OFFSCREEN_PATH } from "./messages";
 import { localIso } from "./lib/localIso";
+import { stateAfterFailure } from "./lib/failureState";
 
 const COLLECT_TIMEOUT_MS = 3000;
 
@@ -113,6 +114,22 @@ async function collectSpeakerLog(tabId: number | undefined): Promise<CollectResp
 
 // ---------- handlers ----------
 
+/**
+ * A stop/upload/retry failed. If the offscreen doc still holds the recording, stay `upload-failed`
+ * (Retry). If the recording is gone, go `idle` with the error kept, and close any leftover doc,
+ * so the next meeting can be recorded.
+ */
+async function applyFailure(base: Session, res: Ack | undefined, fallback: string): Promise<string> {
+  const next = stateAfterFailure({
+    offscreenAlive: await hasOffscreen(),
+    dataKept: res?.kept,
+    error: res?.error ?? fallback,
+  });
+  await setSession({ ...base, state: next.state, error: next.error });
+  if (next.state === "idle") await closeOffscreen();
+  return next.error;
+}
+
 async function start(msg: StartMsg): Promise<Ack> {
   const s = await getSession();
   if (s.state === "recording" || s.state === "uploading" || s.state === "upload-failed") {
@@ -171,9 +188,7 @@ async function stop(): Promise<Ack> {
   } catch (e) {
     res = { ok: false, error: errText(e) };
   }
-  if (!res?.ok) {
-    await setSession({ ...uploading, state: "upload-failed", error: res?.error ?? "The recorder did not respond." });
-  }
+  if (!res?.ok) await applyFailure(uploading, res, "The recorder did not respond.");
   // Otherwise the offscreen document reports `upload-result` when the upload finishes.
   return { ok: true };
 }
@@ -182,8 +197,7 @@ async function retryUpload(): Promise<Ack> {
   const s = await getSession();
   if (s.state !== "upload-failed") return { ok: false, error: "Nothing to retry." };
   if (!(await hasOffscreen())) {
-    const error = "The recording is no longer in memory (the recorder page was closed).";
-    await setSession({ ...s, error });
+    const error = await applyFailure(s, undefined, "the recorder page was closed.");
     return { ok: false, error };
   }
   await setSession({ ...s, state: "uploading", error: undefined });
@@ -195,8 +209,7 @@ async function retryUpload(): Promise<Ack> {
     res = { ok: false, error: errText(e) };
   }
   if (!res?.ok) {
-    const error = res?.error ?? "The recorder did not respond.";
-    await setSession({ ...s, state: "upload-failed", error });
+    const error = await applyFailure(s, res, "The recorder did not respond.");
     return { ok: false, error };
   }
   return { ok: true };
@@ -208,7 +221,8 @@ async function uploadResult(msg: Extract<FromOffscreen, { type: "upload-result" 
     await setSession({ ...s, state: "done", meetingId: msg.id, error: undefined });
     await closeOffscreen(); // only after a successful upload
   } else {
-    await setSession({ ...s, state: "upload-failed", error: msg.error ?? "Upload failed." });
+    // The offscreen doc keeps the recording after a failed upload (kept: true).
+    await applyFailure(s, { ok: false, kept: true, error: msg.error }, "Upload failed.");
   }
 }
 

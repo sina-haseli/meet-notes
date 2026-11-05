@@ -65,6 +65,10 @@ function render(): void {
     isError = true;
     detail.textContent = last.error ?? "";
   } else if (st === "done") text = `Uploaded. The helper is processing ${last.meetingId ?? "the meeting"}.`;
+  else if (st === "idle" && last.error) {
+    text = last.error; // e.g. "Recording lost: …" after the kept recording disappeared
+    isError = true;
+  }
   if (message) {
     text = message;
     isError = messageIsError;

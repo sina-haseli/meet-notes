@@ -26,6 +26,8 @@ export interface StatusResponse {
 export interface Ack {
   ok: boolean;
   error?: string;
+  /** Offscreen stop/retry failures only: whether the recording is still held in memory. */
+  kept?: boolean;
 }
 
 // ---- background -> offscreen ----

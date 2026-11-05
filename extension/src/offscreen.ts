@@ -234,23 +234,34 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck> {
     }
     case "stop": {
       const r = rec;
-      if (!r) return { ok: false, error: "Not recording." };
+      if (!r) return { ok: false, kept: pending !== null, error: "Not recording." };
+      rec = null;
       try {
         const { audio, selfLog, screens } = await stopRecording(r);
-        const log = [...msg.log, ...selfLog].sort(
-          (a, b) => a.start_ms - b.start_ms || a.name.localeCompare(b.name),
-        );
-        pending = { meta: msg.meta, log, audio, screens };
+        pending = { meta: msg.meta, log: mergeLogs(msg.log, selfLog), audio, screens };
       } catch (e) {
-        return { ok: false, error: `Could not stop the recorder: ${errText(e)}` };
-      } finally {
-        rec = null;
+        // Salvage whatever audio was recorded so it can still be uploaded.
+        if (r.chunks.length === 0) {
+          return { ok: false, kept: false, error: `Could not stop the recorder: ${errText(e)}` };
+        }
+        let selfLog: SpeakerInterval[] = [];
+        try {
+          selfLog = r.detector.finish(Date.now() - r.t0);
+        } catch {
+          // keep the content-script log only
+        }
+        pending = {
+          meta: msg.meta,
+          log: mergeLogs(msg.log, selfLog),
+          audio: new Blob(r.chunks, { type: "audio/webm" }),
+          screens: r.screens,
+        };
       }
       void upload(msg.token);
       return { ok: true };
     }
     case "retry-upload": {
-      if (!pending) return { ok: false, error: "The recording is no longer in memory." };
+      if (!pending) return { ok: false, kept: false, error: "The recording is no longer in memory." };
       if (uploading) return { ok: true };
       void upload(msg.token);
       return { ok: true };
@@ -258,8 +269,14 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck> {
   }
 }
 
+function mergeLogs(a: SpeakerInterval[], b: SpeakerInterval[]): SpeakerInterval[] {
+  return [...a, ...b].sort((x, y) => x.start_ms - y.start_ms || x.name.localeCompare(y.name));
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg !== "object" || msg.target !== "offscreen") return false;
-  handle(msg as ToOffscreen).then(sendResponse, (e) => sendResponse({ ok: false, error: errText(e) }));
+  handle(msg as ToOffscreen).then(sendResponse, (e) =>
+    sendResponse({ ok: false, kept: pending !== null, error: errText(e) }),
+  );
   return true;
 });
