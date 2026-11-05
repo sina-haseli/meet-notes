@@ -26,3 +26,6 @@ packages = ["meetnotes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+meetnotes = ["templates/*.md"]
