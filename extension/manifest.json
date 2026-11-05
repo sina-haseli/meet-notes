@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Meet Notes",
+  "version": "0.1.0",
+  "description": "Records a Google Meet (tab audio + your mic + shared-screen changes) and sends it to the local Meet Notes helper.",
+  "permissions": ["tabCapture", "offscreen", "storage", "activeTab"],
+  "host_permissions": ["http://127.0.0.1:47821/*"],
+  "background": { "service_worker": "dist/background.js", "type": "module" },
+  "action": { "default_title": "Meet Notes", "default_popup": "dist/popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["dist/speakerLog.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

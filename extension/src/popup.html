@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meet Notes</title>
+  <style>
+    body { font: 13px/1.4 system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; color: #202124; background: #fff; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    label { display: block; margin: 6px 0 2px; color: #5f6368; }
+    input, select { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; }
+    .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    #toggle { flex: 1; padding: 6px; font: inherit; font-weight: 600; cursor: pointer; }
+    #timer { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+    #status { margin-top: 8px; min-height: 1.4em; }
+    #status.error { color: #c5221f; }
+    #retry { font: inherit; padding: 2px 8px; }
+    #detail { color: #5f6368; font-size: 12px; word-break: break-word; }
+    details { margin-top: 12px; border-top: 1px solid #dadce0; padding-top: 8px; }
+    summary { cursor: pointer; color: #5f6368; }
+    #save { margin-top: 8px; font: inherit; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Meet Notes</h1>
+  <div id="notMeet" class="hidden">Open a Google Meet tab to record.</div>
+
+  <label for="type">Meeting type</label>
+  <select id="type">
+    <option value="grooming">Grooming</option>
+    <option value="planning">Planning</option>
+    <option value="technical">Technical</option>
+  </select>
+  <label for="title">Title (optional)</label>
+  <input id="title" type="text" />
+
+  <div class="row">
+    <button id="toggle" disabled>Start</button>
+    <span id="timer">00:00</span>
+  </div>
+  <div id="status"><span id="statusText"></span> <button id="retry" class="hidden">Retry</button></div>
+  <div id="detail"></div>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <label for="token">Helper token</label>
+    <input id="token" type="password" autocomplete="off" />
+    <label for="selfName">Your name (as shown in Meet)</label>
+    <input id="selfName" type="text" />
+    <button id="save">Save</button> <span id="saved"></span>
+  </details>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
