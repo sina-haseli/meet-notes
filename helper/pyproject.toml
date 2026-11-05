@@ -28,4 +28,4 @@ packages = ["meetnotes"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-meetnotes = ["templates/*.md"]
+meetnotes = ["templates/*.md", "review/*"]
