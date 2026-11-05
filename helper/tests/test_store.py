@@ -49,11 +49,11 @@ def test_meeting_dir_rejects_traversal(tmp_path, bad):
 
 
 def test_slugify_strips_backslash():
-    assert slugify("a\b") == "a-b"
+    assert slugify("a\\b") == "a-b"
 
 
 def test_create_meeting_backslash_title(tmp_path):
-    a = create_meeting(tmp_path, {"title": "foo\bar", "type": "planning",
+    a = create_meeting(tmp_path, {"title": "foo\\bar", "type": "planning",
                                   "started_at": "2026-11-06T10:00:00+03:30"})
     assert a.parent == tmp_path and a.name == "2026-11-06_planning_foo-bar"
     assert meeting_dir(tmp_path, a.name) == a
