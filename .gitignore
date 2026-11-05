@@ -4,3 +4,5 @@ dist/
 __pycache__/
 .venv/
 *.webm
+*.egg-info/
+.pytest_cache/
