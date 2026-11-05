@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from importlib import resources
@@ -78,9 +79,12 @@ def generate_notes(folder: Path, cfg: Config, run=subprocess.run) -> None:
            "--allowedTools", "Read,Grep,Glob",
            "--disallowedTools", "Write,Edit,Bash,WebFetch,WebSearch",
            *sum((["--add-dir", str(r)] for r in cfg.repos), [])]
+    # Force the Pro login: never let an API key from the environment be used.
+    env = {k: v for k, v in os.environ.items()
+           if k.upper() not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
     try:
         proc = run(cmd, cwd=folder, input=prompt, capture_output=True, text=True,
-                   encoding="utf-8", timeout=TIMEOUT_S)
+                   encoding="utf-8", timeout=TIMEOUT_S, env=env)
     except subprocess.TimeoutExpired as e:
         raise NotesError(f"Claude Code timed out after {TIMEOUT_S} s") from e
     except OSError as e:

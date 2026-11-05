@@ -128,3 +128,15 @@ def test_screens_json_used(meeting_folder, cfg):
     seen = {}
     generate_notes(meeting_folder, cfg, run=lambda c, **k: (seen.update(k), ok_run())[1])
     assert "Login form" in seen["input"]
+
+
+def test_api_keys_stripped_from_env(meeting_folder, cfg, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok")
+    monkeypatch.setenv("MEETNOTES_KEEP", "yes")
+    seen = {}
+    generate_notes(meeting_folder, cfg, run=lambda c, **k: (seen.update(k), ok_run())[1])
+    env = seen["env"]
+    assert "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
+    assert env["MEETNOTES_KEEP"] == "yes"
+    assert any(k.upper() == "PATH" for k in env)
