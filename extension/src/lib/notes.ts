@@ -21,11 +21,12 @@ export const CODE_EVIDENCE_START = "<<<CODE_EVIDENCE_START>>>";
 export const CODE_EVIDENCE_END = "<<<CODE_EVIDENCE_END>>>";
 
 /**
- * Repo text (service names, paths, snippets) must not close the evidence fence or forge the
- * output markers: any `<<<NAME>>>` loses one `<` and one `>`.
+ * Repo text (service names, keywords, paths, snippets) must not close the evidence fence or forge
+ * the output markers. Every marker needs a run of three brackets, so any run of 3+ `<` or `>`
+ * collapses to two; the result never contains `<<<` or `>>>`, however many brackets were stacked.
  */
 function neutralise(s: string): string {
-  return s.replace(/<<<([A-Za-z_]+)>>>/g, "<<$1>>");
+  return s.replace(/<{3,}/g, "<<").replace(/>{3,}/g, ">>");
 }
 
 /** The `## Code evidence` body: what the code search found, or why it did not run. */
