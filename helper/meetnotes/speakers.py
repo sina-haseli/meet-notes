@@ -12,11 +12,20 @@ def _overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
 
 
 def assign_speakers(
-    turns: list[Turn], log: list[dict], min_share: float = 0.6, min_overlap_ms: int = 1000
+    turns: list[Turn],
+    log: list[dict],
+    min_share: float = 0.6,
+    min_overlap_ms: int = 1000,
+    min_coverage: float = 0.5,
 ) -> list[Turn]:
+    """A label gets a name only when that name dominates the logged overlap (min_share)
+    AND covers enough of the label's own speech (min_coverage). The coverage check stops a
+    partial log (e.g. only the mic self-log) from crediting a remote voice to a logged name."""
     overlaps: dict[tuple[int, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    durations: dict[tuple[int, str], int] = defaultdict(int)
     for t in turns:
         per_name = overlaps[(t.chunk, t.label)]
+        durations[(t.chunk, t.label)] += max(0, t.end_ms - t.start_ms)
         for entry in log:
             ms = _overlap(t.start_ms, t.end_ms, entry["start_ms"], entry["end_ms"])
             if ms > 0:
@@ -26,7 +35,15 @@ def assign_speakers(
     for key, per_name in overlaps.items():
         total = sum(per_name.values())
         name, best = max(per_name.items(), key=lambda kv: kv[1], default=(None, 0))
-        resolved[key] = name if name is not None and best >= min_overlap_ms and best / total >= min_share else None
+        duration = durations[key]
+        confident = (
+            name is not None
+            and best >= min_overlap_ms
+            and best / total >= min_share
+            and duration > 0
+            and best / duration >= min_coverage
+        )
+        resolved[key] = name if confident else None
 
     numbers: dict[tuple[int, str], int] = {}
     out: list[Turn] = []
