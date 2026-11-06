@@ -1,12 +1,22 @@
 // Offscreen document: captures the Meet tab (audio + low-rate video) and the mic, mixes the audio,
-// records it, samples screen changes, detects self-speaking, and uploads. The recording is kept in
-// memory until an upload succeeds, so a failed upload can be retried.
+// records it, samples screen changes and detects self-speaking.
+// - Helper mode (persist false): the recording is kept in memory until an upload succeeds, so a
+//   failed upload can be retried.
+// - Built-in mode (persist true): 16 kHz PCM slices, WebM chunks and screens are written to
+//   IndexedDB as they arrive (crash-safe), and finished meetings are processed here one at a time.
 import type { Screen, SpeakerInterval, UploadMeta } from "./types";
 import type { Ack, ExportAudioAck, FromOffscreen, OffscreenStartAck, ToOffscreen } from "./messages";
 import { UPLOAD_URL } from "./messages";
 import { CHANGE_THRESHOLD, frameDiff } from "./lib/frameDiff";
 import { SpeakingDetector } from "./lib/speakingDetector";
 import { buildUploadForm, uploadWithRetry } from "./lib/upload";
+import { getHandle, putPcm, putScreen, putWebm, updateMeeting } from "./lib/db";
+import { PCM_RATE } from "./lib/audioChunks";
+import { SliceBuffer } from "./lib/sliceBuffer";
+import { snapshotServices, type ServicesSnapshot } from "./lib/servicesSnapshot";
+import { readServicesContext } from "./lib/servicesContext";
+import { getSettings } from "./lib/settings";
+import { defaultPipelineDeps, processMeeting } from "./lib/pipeline";
 
 const THUMB_W = 64;
 const THUMB_H = 36;
@@ -15,6 +25,21 @@ const FRAME_EVERY_MS = 2000;
 const TIMESLICE_MS = 10_000;
 /** Keep at most this many screen changes (bounds memory and upload size). */
 const MAX_SCREENS = 300;
+const WORKLET_PATH = "dist/pcmWorklet.js";
+/** How long Stop waits for the worklet to hand over its last partial batch. */
+const WORKLET_FLUSH_MS = 1000;
+
+/** Built-in mode only: where the recording is persisted while it runs. */
+interface Persist {
+  meetingId: string;
+  worklet: AudioWorkletNode;
+  slices: SliceBuffer;
+  /** 16 kHz samples written to IndexedDB so far. */
+  pcmSamples: number;
+  webmSeq: number;
+  /** Serial chain of WebM/screen writes. */
+  writes: Promise<void>;
+}
 
 interface Recording {
   t0: number;
@@ -29,7 +54,10 @@ interface Recording {
   frameJob: Promise<void> | null;
   lastThumb: Uint8Array | null;
   screensCapped: boolean;
+  /** Screens kept so far (counted in both modes; in built-in mode they are not held in memory). */
+  screenCount: number;
   stopping: boolean;
+  persist: Persist | null;
 }
 
 interface Pending {
@@ -43,6 +71,9 @@ let rec: Recording | null = null;
 let pending: Pending | null = null;
 let uploading = false;
 let exportUrl: string | null = null;
+/** Built-in processing queue: FIFO, one meeting at a time. */
+const queue: string[] = [];
+let processingId: string | null = null;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -54,7 +85,7 @@ function report(msg: FromOffscreen): void {
 
 // ---------- start ----------
 
-async function startRecording(streamId: string, selfName: string): Promise<number> {
+async function startRecording(streamId: string, selfName: string, meetingId: string | null): Promise<number> {
   const streams: MediaStream[] = [];
   let ctx: AudioContext | null = null;
   try {
@@ -78,13 +109,45 @@ async function startRecording(streamId: string, selfName: string): Promise<numbe
     analyser.fftSize = 2048;
     micSrc.connect(analyser);
 
+    let persist: Persist | null = null;
+    if (meetingId !== null) {
+      // 16 kHz PCM tap. Not connected to the destination: a node without outputs is still pulled.
+      await ctx.audioWorklet.addModule(chrome.runtime.getURL(WORKLET_PATH));
+      const worklet = new AudioWorkletNode(ctx, "pcm-capture", { numberOfInputs: 1, numberOfOutputs: 0 });
+      micSrc.connect(worklet);
+      tabSrc.connect(worklet);
+      const p: Persist = {
+        meetingId,
+        worklet,
+        pcmSamples: 0,
+        webmSeq: 0,
+        writes: Promise.resolve(),
+        slices: new SliceBuffer(async (seq, pcm) => {
+          await putPcm(meetingId, seq, pcm);
+          p.pcmSamples += pcm.length;
+          await updateMeeting(meetingId, { pcmSamples: p.pcmSamples });
+        }),
+      };
+      worklet.port.onmessage = (e: MessageEvent) => {
+        if (e.data instanceof Int16Array) p.slices.push(e.data);
+      };
+      persist = p;
+    }
+
     const recorder = new MediaRecorder(mixed.stream, {
       mimeType: "audio/webm;codecs=opus",
       audioBitsPerSecond: 32000,
     });
     const chunks: Blob[] = [];
     recorder.addEventListener("dataavailable", (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
+      if (e.data.size === 0) return;
+      if (persist) {
+        const p = persist;
+        const seq = p.webmSeq++;
+        persistWrite(p, () => putWebm(p.meetingId, seq, e.data));
+      } else {
+        chunks.push(e.data);
+      }
     });
 
     const video = document.createElement("video");
@@ -108,7 +171,9 @@ async function startRecording(streamId: string, selfName: string): Promise<numbe
       frameJob: null,
       lastThumb: null,
       screensCapped: false,
+      screenCount: 0,
       stopping: false,
+      persist,
     };
 
     const buf = new Float32Array(analyser.fftSize);
@@ -162,7 +227,7 @@ async function sampleFrame(r: Recording): Promise<void> {
     }
     // The first frame counts as a change, so the screen at recording start is kept too.
     if (r.lastThumb && frameDiff(r.lastThumb, gray) < CHANGE_THRESHOLD) return;
-    if (r.screens.length >= MAX_SCREENS) {
+    if (r.screenCount >= MAX_SCREENS) {
       if (!r.screensCapped) console.warn(`screen limit (${MAX_SCREENS}) reached; no more screens are kept`);
       r.screensCapped = true;
       return;
@@ -173,7 +238,10 @@ async function sampleFrame(r: Recording): Promise<void> {
     fctx.drawImage(v, 0, 0);
     const blob = await full.convertToBlob({ type: "image/jpeg", quality: 0.8 });
     r.lastThumb = gray;
-    r.screens.push({ atMs, blob });
+    r.screenCount++;
+    const p = r.persist;
+    if (p) persistWrite(p, () => putScreen(p.meetingId, atMs, blob));
+    else r.screens.push({ atMs, blob });
   } catch (e) {
     console.warn("frame sample failed", e);
   }
@@ -203,6 +271,68 @@ async function stopRecording(r: Recording): Promise<{ audio: Blob; selfLog: Spea
   };
 }
 
+function persistWrite(p: Persist, write: () => Promise<void>): void {
+  // A failed write must not kill the recording or block later writes.
+  p.writes = p.writes.then(write).catch((e) => console.warn("could not save recording data", e));
+}
+
+/** Asks the worklet for its partial batch; resolves once that is in the SliceBuffer (or on timeout). */
+function flushWorklet(p: Persist): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, WORKLET_FLUSH_MS);
+    p.worklet.port.onmessage = (e: MessageEvent) => {
+      if (e.data instanceof Int16Array) p.slices.push(e.data);
+      else if (e.data === "flushed") {
+        clearTimeout(timer);
+        resolve();
+      }
+    };
+    p.worklet.port.postMessage("flush");
+  });
+}
+
+/** Built-in Stop: ends capture and waits until everything recorded is in IndexedDB. */
+async function stopPersisted(r: Recording, p: Persist): Promise<SpeakerInterval[]> {
+  r.stopping = true;
+  r.timers.forEach((t) => clearInterval(t));
+  r.timers = [];
+  const tEnd = Date.now() - r.t0;
+  try {
+    await flushWorklet(p);
+    if (r.recorder.state !== "inactive") {
+      const stopped = new Promise<void>((res) => r.recorder.addEventListener("stop", () => res(), { once: true }));
+      r.recorder.stop(); // flushes the final dataavailable before `stop`
+      await stopped;
+    }
+    if (r.frameJob) await r.frameJob;
+  } catch (e) {
+    // Whatever was already written is kept; finish with that.
+    console.warn("could not stop the recorder cleanly", e);
+  } finally {
+    release(r);
+  }
+  try {
+    await p.slices.flush();
+  } catch (e) {
+    console.warn("could not save part of the audio", e);
+  }
+  await p.writes;
+  try {
+    return r.detector.finish(tEnd);
+  } catch {
+    return []; // keep the content-script log only
+  }
+}
+
+async function takeServicesSnapshot(): Promise<ServicesSnapshot> {
+  try {
+    return await snapshotServices(await getSettings(), getHandle, readServicesContext);
+  } catch (e) {
+    console.warn("services snapshot failed", e);
+    return { servicesContext: null };
+  }
+}
+
 function release(r: Recording): void {
   for (const s of r.streams) s.getTracks().forEach((t) => t.stop());
   r.video.pause();
@@ -228,6 +358,37 @@ async function upload(token: string): Promise<void> {
   }
 }
 
+// ---------- built-in processing queue ----------
+
+function enqueue(id: string): void {
+  if (processingId !== id && !queue.includes(id)) queue.push(id);
+  void drain();
+}
+
+async function drain(): Promise<void> {
+  if (processingId !== null) return;
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    processingId = id;
+    let ok = false;
+    try {
+      // Fresh deps (and settings) per run, so a Retry after fixing Settings uses the new values.
+      ok = (await processMeeting(id, defaultPipelineDeps())).status === "ready";
+    } catch (e) {
+      console.warn("processing failed", e); // processMeeting should never throw
+    } finally {
+      processingId = null;
+    }
+    report({ target: "background", type: "processed", meetingId: id, ok });
+  }
+  reportIfIdle();
+}
+
+function reportIfIdle(): void {
+  if (rec || processingId !== null || queue.length > 0 || pending || uploading) return;
+  report({ target: "background", type: "offscreen-idle" });
+}
+
 // ---------- routing ----------
 
 async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | ExportAudioAck> {
@@ -235,8 +396,11 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
     case "start": {
       if (rec) return { ok: false, error: "Already recording." };
       if (pending) return { ok: false, error: "A previous recording has not been uploaded yet." };
+      // A missing `persist` (the v1 start) means helper mode.
+      const meetingId = msg.persist === true ? (msg.meetingId ?? "") : null;
+      if (meetingId === "") return { ok: false, error: "Could not start capture: no meeting to record into." };
       try {
-        const t0 = await startRecording(msg.streamId, msg.selfName);
+        const t0 = await startRecording(msg.streamId, msg.selfName, meetingId);
         return { ok: true, t0 };
       } catch (e) {
         return { ok: false, error: `Could not start capture: ${errText(e)}` };
@@ -245,6 +409,8 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
     case "stop": {
       const r = rec;
       if (!r) return { ok: false, kept: pending !== null, error: "Not recording." };
+      // A built-in recording is never handed to the upload path; it keeps running until stop-builtin.
+      if (r.persist) return { ok: false, kept: true, error: "The recording didn't stop. Press Stop again." };
       rec = null;
       try {
         const { audio, selfLog, screens } = await stopRecording(r);
@@ -282,6 +448,35 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
       if (uploading) return { ok: false, kept: true, error: "An upload is in progress." };
       exportUrl ??= URL.createObjectURL(pending.audio);
       return { ok: true, url: exportUrl };
+    }
+    case "stop-builtin": {
+      const r = rec;
+      const p = r?.persist;
+      if (!r || !p || p.meetingId !== msg.meetingId) return { ok: false, error: "Not recording." };
+      rec = null;
+      const selfLog = await stopPersisted(r, p);
+      const snap = await takeServicesSnapshot();
+      try {
+        await updateMeeting(p.meetingId, {
+          speakerLog: mergeLogs(msg.log, selfLog),
+          participants: msg.participants,
+          pcmSamples: p.pcmSamples,
+          durationMs: Math.round(p.pcmSamples / (PCM_RATE / 1000)),
+          servicesContext: snap.servicesContext,
+          servicesNotice: snap.servicesNotice,
+          status: "queued",
+        });
+      } catch (e) {
+        // The audio is already in IndexedDB; only the final record update failed.
+        reportIfIdle();
+        return { ok: false, error: `Could not save the meeting: ${errText(e)}` };
+      }
+      enqueue(p.meetingId);
+      return { ok: true };
+    }
+    case "process": {
+      enqueue(msg.meetingId);
+      return { ok: true };
     }
   }
 }

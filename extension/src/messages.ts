@@ -39,10 +39,21 @@ export interface Ack {
 
 // ---- background -> offscreen ----
 export type ToOffscreen =
-  | { target: "offscreen"; type: "start"; streamId: string; selfName: string }
+  | {
+      target: "offscreen";
+      type: "start";
+      streamId: string;
+      selfName: string;
+      /** Built-in mode: the meeting record (created by the background) that receives the audio. */
+      meetingId?: string;
+      /** True in built-in mode (persist to IndexedDB); missing or false = helper mode, v1 behaviour. */
+      persist?: boolean;
+    }
   | { target: "offscreen"; type: "stop"; meta: UploadMeta; log: SpeakerInterval[]; token: string }
   | { target: "offscreen"; type: "retry-upload"; token: string }
-  | { target: "offscreen"; type: "export-audio" };
+  | { target: "offscreen"; type: "export-audio" }
+  | { target: "offscreen"; type: "stop-builtin"; meetingId: string; log: SpeakerInterval[]; participants: string[] }
+  | { target: "offscreen"; type: "process"; meetingId: string };
 export interface OffscreenStartAck extends Ack {
   t0?: number;
 }
@@ -54,7 +65,10 @@ export interface ExportAudioAck extends Ack {
 // ---- offscreen -> background ----
 export type FromOffscreen =
   | { target: "background"; type: "upload-result"; ok: boolean; id?: string; error?: string }
-  | { target: "background"; type: "tab-ended" };
+  | { target: "background"; type: "tab-ended" }
+  | { target: "background"; type: "processed"; meetingId: string; ok: boolean }
+  /** Not recording and nothing queued or being processed: the document may be closed. */
+  | { target: "background"; type: "offscreen-idle" };
 
 // ---- background -> content script (Task 13) ----
 export interface CollectResponse {
