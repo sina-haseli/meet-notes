@@ -86,6 +86,8 @@ export function stepText(r: MeetingRecord): string | null {
       return "Matching speakers…";
     case "screens":
       return "Describing screens…";
+    case "code":
+      return "Searching your code…";
     case "notes":
       return "Writing notes…";
     case "done":
@@ -107,6 +109,8 @@ export function progressFor(r: MeetingRecord): number {
       return 0.78;
     case "screens":
       return 0.82;
+    case "code":
+      return 0.86;
     case "notes":
       return 0.9;
     case "done":

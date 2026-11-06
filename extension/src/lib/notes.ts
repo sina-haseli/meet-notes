@@ -1,4 +1,4 @@
-import type { MeetingRecord, ScreenDesc } from "../types";
+import type { CodeSearch, MeetingRecord, ScreenDesc } from "../types";
 import { TEMPLATES } from "./templates";
 
 export const SUMMARY_MARK = "<<<SUMMARY>>>";
@@ -17,11 +17,28 @@ function mmss(ms: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** The `## Code evidence` body: what the code search found, or why it did not run. */
+export function renderCodeEvidence(cs: CodeSearch | undefined): string {
+  if (!cs) return "(code search not run)";
+  if (cs.status === "skipped") return `(code search skipped: ${cs.reason})`;
+  const blocks = cs.services.map((svc) => {
+    const lines = [`### ${svc.service} (matched: ${svc.keywords.join(", ")})`];
+    for (const f of svc.files) {
+      lines.push(`- ${f.path}`);
+      for (const snip of f.snippets) lines.push(`    > ${snip}`);
+    }
+    return lines.join("\n");
+  });
+  const body = blocks.length ? blocks.join("\n\n") : "(no matching code found)";
+  return cs.limitHit ? `${body}\n\n(search stopped at a limit; results may be partial)` : body;
+}
+
 export function buildNotesPrompt(
   rec: Pick<MeetingRecord, "title" | "type" | "startedAt" | "durationMs" | "participants">,
   transcriptMd: string,
   screens: ScreenDesc[],
   servicesContext: string | null,
+  codeSearch?: CodeSearch,
 ): string {
   const template = TEMPLATES[rec.type];
   if (!template) throw new NotesError(`No notes template for meeting type '${rec.type}'`);
@@ -39,7 +56,8 @@ export function buildNotesPrompt(
     ? "## Screenshots\n" + screens.map((s) => `- screens/${s.atMs}.jpg [${mmss(s.atMs)}]: ${s.description}`).join("\n") + "\n"
     : "## Screenshots\n(none)\n";
   const ctx = `## Services context\n${servicesContext ? servicesContext : "(none)"}\n`;
-  return `${template}\n${info}\n${shots}\n${ctx}\n## Transcript\n${transcriptMd}\n`;
+  const code = `## Code evidence\n${renderCodeEvidence(codeSearch)}\n`;
+  return `${template}\n${info}\n${shots}\n${ctx}\n${code}\n## Transcript\n${transcriptMd}\n`;
 }
 
 export function splitNotesOutput(text: string): { summaryMd: string; notesMd: string } {

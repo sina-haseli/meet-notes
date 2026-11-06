@@ -1,6 +1,9 @@
-import type { ChunkPlan, MeetingRecord, ScreenDesc, Step, Turn } from "../types";
+import type { ChunkPlan, CodeSearch, MeetingRecord, ScreenDesc, Step, Turn } from "../types";
 import * as realDb from "./db";
 import type { Settings } from "./settings";
+import { extractKeywords } from "./codeKeywords";
+import { searchCode } from "./codeSearch";
+import { SERVICES_NOTICE, type PermissionQueryable } from "./servicesSnapshot";
 import { assembleChunk, planChunks, PCM_RATE } from "./audioChunks";
 import { encodeMp3 } from "./mp3";
 import { complete, describeImage, OpenRouterError, transcribeChunk } from "./openrouter";
@@ -16,6 +19,39 @@ export interface PipelineDeps {
   describe: typeof describeImage;
   complete: typeof complete;
   encode: typeof encodeMp3;
+  /** The saved services folder, if it can be read without a prompt. */
+  codeDir: () => Promise<CodeDir>;
+  searchCode: typeof searchCode;
+  extractKeywords: typeof extractKeywords;
+}
+
+export type CodeDir =
+  | { status: "ok"; dir: FileSystemDirectoryHandle }
+  | { status: "none" }
+  | { status: "no-permission" };
+
+/**
+ * The services folder for the code step. Uses only IndexedDB and the handle's own permission
+ * query (no chrome.* APIs), so it works in the offscreen document; it never prompts.
+ */
+export async function resolveCodeDir(
+  getHandle: (key: string) => Promise<FileSystemDirectoryHandle | undefined>,
+): Promise<CodeDir> {
+  let h: FileSystemDirectoryHandle | undefined;
+  try {
+    h = await getHandle("services");
+  } catch {
+    // can't tell whether a folder is saved: offer Allow & Retry rather than failing the meeting
+    return { status: "no-permission" };
+  }
+  if (!h) return { status: "none" };
+  try {
+    const perm = await (h as unknown as PermissionQueryable).queryPermission({ mode: "read" });
+    if (perm === "granted") return { status: "ok", dir: h };
+  } catch {
+    // folder moved/deleted or unreadable: same outcome as a missing permission
+  }
+  return { status: "no-permission" };
 }
 
 /**
@@ -30,6 +66,9 @@ export function defaultPipelineDeps(settings: () => Promise<Settings>): Pipeline
     describe: describeImage,
     complete,
     encode: encodeMp3,
+    codeDir: () => resolveCodeDir(realDb.getHandle),
+    searchCode,
+    extractKeywords,
   };
 }
 
@@ -124,11 +163,44 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       await save({ screens: described, costUsd: cost });
     }
 
+    // code: where the meeting's topics live in the services folder (AI suggestion evidence)
+    if (!rec!.codeSearch) {
+      step = "code";
+      await save({ step });
+      const patch: Partial<MeetingRecord> = {};
+      let codeSearch: CodeSearch;
+      if (rec!.type === "daily") codeSearch = { status: "skipped", reason: "daily" };
+      else if (!settings.codeSuggestions) codeSearch = { status: "skipped", reason: "off" };
+      else if (settings.role !== "technical") codeSearch = { status: "skipped", reason: "not-technical" };
+      else {
+        const d = await deps.codeDir();
+        if (d.status === "none") codeSearch = { status: "skipped", reason: "no-folder" };
+        else if (d.status === "no-permission") {
+          codeSearch = { status: "skipped", reason: "no-permission" };
+          patch.servicesNotice = SERVICES_NOTICE;
+        } else {
+          try {
+            const kw = await deps.extractKeywords(
+              key, settings.models.transcribe, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], deps.complete);
+            cost += kw.cost;
+            const found = await deps.searchCode(d.dir, kw.keywords);
+            codeSearch = { status: "done", keywords: kw.keywords, services: found.services, limitHit: found.limitHit };
+          } catch (e) {
+            if (e instanceof OpenRouterError) throw e;
+            // A local search problem must never cost the user their notes.
+            codeSearch = { status: "done", keywords: [], services: [], limitHit: false };
+          }
+        }
+      }
+      await save({ ...patch, codeSearch, costUsd: cost });
+    }
+
     // notes
     if (!rec!.notesMd) {
       step = "notes";
       await save({ step });
-      const prompt = buildNotesPrompt(rec!, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], rec!.servicesContext);
+      const prompt = buildNotesPrompt(
+        rec!, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], rec!.servicesContext, rec!.codeSearch);
       const { text, cost: c } = await deps.complete(
         key, settings.models.notes, [{ type: "text", text: prompt }], { maxTokens: NOTES_MAX_TOKENS });
       cost += c;

@@ -545,7 +545,9 @@ btn("allowRetry").addEventListener("click", () =>
       return;
     }
     await flush();
-    await updateMeeting(id, { servicesContext, servicesNotice: undefined, notesMd: undefined, summaryMd: undefined });
+    await updateMeeting(id, {
+      servicesContext, servicesNotice: undefined, codeSearch: undefined, notesMd: undefined, summaryMd: undefined,
+    });
     for (const d of ["summaryMd", "notesMd"] as const) dirty[d] = false;
     let res: Ack | undefined;
     let detail: string | undefined;

@@ -1,11 +1,20 @@
 import type { MeetingType } from "../types";
 
-const RULES = `You turn a transcript of a Google Meet work meeting (spoken Persian with English technical terms) into two documents. The notes feed AI coding agents later, so structure and accuracy matter more than prose.
+/** Email-summary section title for the code suggestions (exact copy). */
+const SUGGEST_TITLE = "سرویس‌های احتمالی برای تغییر (پیشنهاد AI)";
+const WHERE_TO_LOOK = "## Where to look in the code (AI suggestion)";
+
+const SERVICES_RULE = `use the services context only to correct service/repo/component names to their real names; never add tasks, owners, estimates or decisions not present in the transcript. If there is no services context, write \`?\` for unknown Service/Repo cells`;
+
+// Standard meetings may suggest where code lives, but only from `## Code evidence`.
+const SERVICES_RULE_CODE = `use the services context only to correct service/repo/component names to their real names; suggestions about where code lives come only from \`## Code evidence\`, only in the sections described below (the summary section \`${SUGGEST_TITLE}\`, the notes section \`${WHERE_TO_LOOK}\` and \`(suggested)\` Service/Repo cells), labelled as AI suggestions, never presented as said or decided; never add tasks, owners, estimates or decisions not present in the transcript. If there is no services context, write \`?\` for unknown Service/Repo cells`;
+
+const rules = (servicesRule: string) => `You turn a transcript of a Google Meet work meeting (spoken Persian with English technical terms) into two documents. The notes feed AI coding agents later, so structure and accuracy matter more than prose.
 
 ## Rules
 - notes in English; summary in Persian with English technical terms in Latin script unchanged
 - English technical terms (service names, components, libraries, API names, code identifiers) stay in Latin script, verbatim. Never translate or transliterate them.
-- use the services context only to correct service/repo/component names to their real names; never add tasks, owners, estimates or decisions not present in the transcript. If there is no services context, write \`?\` for unknown Service/Repo cells
+- ${servicesRule}
 - unknown values are \`?\`
 - items attributed to uncertain speakers keep the \`(uncertain)\` marker
 - Never replace a \`Speaker N\` label with a participant name, even if the participants list suggests who it might be. A person section or item for an uncertain speaker uses the \`Speaker N\` label and is marked (uncertain).
@@ -19,7 +28,7 @@ Answer with exactly this layout and nothing before, between or after it (no code
 <<<SUMMARY>>>
 `;
 
-const STANDARD = `${RULES}${CONTRACT_HEAD}(summary: a short Persian summary: purpose, key decisions, tasks with owners, open questions)
+const STANDARD = `${rules(SERVICES_RULE_CODE)}${CONTRACT_HEAD}(summary: a short Persian summary: purpose, key decisions, tasks with owners, open questions. If \`## Code evidence\` lists services, end the summary with a section titled \`${SUGGEST_TITLE}\`: one line per service — the service name and a short Persian reason based on the evidence. Service names only; never file paths. Make clear these are AI suggestions from the code, not something said in the meeting. If the code evidence is empty, skipped or not run, omit this section entirely.)
 <<<NOTES>>>
 (notes: English, with exactly the sections below, in this order)
 
@@ -32,12 +41,13 @@ const STANDARD = `${RULES}${CONTRACT_HEAD}(summary: a short Persian summary: pur
 6. \`## Decisions\`
 7. \`## Open questions\`
 8. \`## Quotes\`
+9. \`${WHERE_TO_LOOK}\` (per suggested service: the service, the file paths from the evidence, and why they match — which keywords, what the snippet shows. If \`## Code evidence\` lists no services write \`No matching code found.\`; if the code search was skipped or not run write \`Code search skipped (<reason>).\`; if the search stopped at a limit, say the results may be partial.)
 
-In \`## Tasks\`, Source is the \`[MM:SS]\` timestamp where the task was said. Write \`?\` for any unknown cell. If a section has nothing, write \`None discussed.\`
+In \`## Tasks\`, Source is the \`[MM:SS]\` timestamp where the task was said. Service/Repo may be \`<service> (suggested)\` only when the code evidence clearly ties that task to that service; otherwise \`?\` (or the name actually said). Write \`?\` for any unknown cell. If a section has nothing, write \`None discussed.\`
 
 `;
 
-const DAILY = `${RULES}${CONTRACT_HEAD}(summary: Persian. For each participant, three short bullet groups: دیروز (yesterday), امروز (today), موانع (blockers). Keep English terms in Latin script. Then a short list titled نیاز به پیگیری with the items that need follow-up.)
+const DAILY = `${rules(SERVICES_RULE)}${CONTRACT_HEAD}(summary: Persian. For each participant, three short bullet groups: دیروز (yesterday), امروز (today), موانع (blockers). Keep English terms in Latin script. Then a short list titled نیاز به پیگیری with the items that need follow-up.)
 <<<NOTES>>>
 (notes: English, with exactly the sections below, in this order)
 

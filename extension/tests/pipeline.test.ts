@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { processMeeting, type PipelineDeps } from "../src/lib/pipeline";
+import { processMeeting, resolveCodeDir, type PipelineDeps } from "../src/lib/pipeline";
 import { OpenRouterError } from "../src/lib/openrouter";
 import type { MeetingRecord, Turn } from "../src/types";
 import type { Settings } from "../src/lib/settings";
+import { SERVICES_NOTICE } from "../src/lib/servicesSnapshot";
 
 const SUMMARY_OK = "<<<SUMMARY>>>\nSummary\n<<<NOTES>>>\n# Notes";
 const ONE_TURN = '[{"start":"00:01","end":"00:03","speaker":"S1","text":"hello"}]';
@@ -17,12 +18,16 @@ function rec(over: Partial<MeetingRecord> = {}): MeetingRecord {
 
 function setup(over: Partial<MeetingRecord> = {}, o: {
   key?: () => string; transcribe?: any; describe?: any; complete?: any; screens?: number;
+  settings?: Partial<Settings>; codeDir?: any; searchCode?: any; extractKeywords?: any;
 } = {}) {
   let r = rec(over);
   const key = o.key ?? (() => "k");
   const transcribe = o.transcribe ?? vi.fn(async () => ({ text: ONE_TURN, cost: 0.01 }));
   const describe = o.describe ?? vi.fn(async () => ({ text: "A screen", cost: 0.002 }));
   const complete = o.complete ?? vi.fn(async () => ({ text: SUMMARY_OK, cost: 0.1 }));
+  const codeDir = o.codeDir ?? vi.fn(async () => ({ status: "none" }));
+  const searchCode = o.searchCode ?? vi.fn(async () => ({ services: [], limitHit: false }));
+  const extractKeywords = o.extractKeywords ?? vi.fn(async () => ({ keywords: [], cost: 0 }));
   const screens = Array.from({ length: o.screens ?? 0 }, (_, i) => ({ atMs: (i + 1) * 1000, blob: new Blob(["x"]) }));
   const deps: PipelineDeps = {
     db: {
@@ -32,11 +37,14 @@ function setup(over: Partial<MeetingRecord> = {}, o: {
         Array.from({ length: to - from + 1 }, (_, i) => ({ seq: from + i, pcm: new Int16Array(160000) })),
       listScreens: async () => screens,
     } as any,
-    settings: async () => ({ openrouterKey: key(), models: { transcribe: "mt", vision: "mv", notes: "mn" } } as Settings),
+    settings: async () => ({
+      openrouterKey: key(), models: { transcribe: "mt", vision: "mv", notes: "mn" }, ...o.settings,
+    } as Settings),
     transcribe, describe, complete,
     encode: () => new Blob(["mp3"]),
+    codeDir, searchCode, extractKeywords,
   };
-  return { deps, get: () => r, transcribe, describe, complete };
+  return { deps, get: () => r, transcribe, describe, complete, codeDir, searchCode, extractKeywords };
 }
 
 describe("processMeeting", () => {
@@ -171,5 +179,148 @@ describe("processMeeting", () => {
     const out = await processMeeting("m1", setup({}, { complete }).deps);
     expect(out.error).toBe("Something went wrong while processing (notes). Press Retry.");
     expect(out.errorDetail).toBe("boom");
+  });
+});
+
+describe("code step", () => {
+  const DIR = { name: "services" } as unknown as FileSystemDirectoryHandle;
+  const MASERATI = {
+    services: [{ service: "maserati", keywords: ["wallet"], files: [{ path: "maserati/wallet.go", snippets: ["func Wallet() {"] }] }],
+    limitHit: false,
+  };
+  const on = (over: Partial<MeetingRecord> = {}, o: Parameters<typeof setup>[1] = {}) =>
+    setup({ type: "technical", ...over }, {
+      settings: { role: "technical", codeSuggestions: true },
+      codeDir: vi.fn(async () => ({ status: "ok", dir: DIR })),
+      extractKeywords: vi.fn(async () => ({ keywords: ["wallet"], cost: 0.003 })),
+      searchCode: vi.fn(async () => structuredClone(MASERATI)),
+      ...o,
+    });
+  const promptOf = (s: ReturnType<typeof setup>) => ((s.complete.mock.calls[0] as any[])[2] as { text: string }[])[0].text;
+
+  it("codeStepDoneFeedsNotesPrompt", async () => {
+    const s = on();
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.codeSearch).toEqual({ status: "done", keywords: ["wallet"], services: MASERATI.services, limitHit: false });
+    expect(s.extractKeywords).toHaveBeenCalledTimes(1);
+    const args = s.extractKeywords.mock.calls[0] as any[];
+    expect(args[0]).toBe("k");
+    expect(args[1]).toBe("mt");
+    expect(args[4]).toBe(s.complete);
+    expect(s.searchCode).toHaveBeenCalledWith(DIR, ["wallet"]);
+    expect(promptOf(s)).toContain("## Code evidence");
+    expect(promptOf(s)).toContain("maserati");
+  });
+
+  it("keywordCostAddedToCost", async () => {
+    const s = on();
+    const out = await processMeeting("m1", s.deps);
+    expect(out.costUsd).toBeCloseTo(0.01 * 2 + 0.003 + 0.1, 9);
+  });
+
+  it("skipsWithoutCallingWhenOff", async () => {
+    const s = on({}, { settings: { role: "technical", codeSuggestions: false } });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.codeSearch).toEqual({ status: "skipped", reason: "off" });
+    expect(s.codeDir).not.toHaveBeenCalled();
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+    expect(s.searchCode).not.toHaveBeenCalled();
+    expect(promptOf(s)).toContain("## Code evidence\n(code search skipped: off)");
+  });
+
+  it("skipsDaily", async () => {
+    const s = on({ type: "daily" });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.codeSearch).toEqual({ status: "skipped", reason: "daily" });
+    expect(s.codeDir).not.toHaveBeenCalled();
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+  });
+
+  it("skipsNotTechnical", async () => {
+    const s = on({}, { settings: { role: "pm", codeSuggestions: true } });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.codeSearch).toEqual({ status: "skipped", reason: "not-technical" });
+    expect(s.codeDir).not.toHaveBeenCalled();
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+  });
+
+  it("noFolderSkips", async () => {
+    const s = on({}, { codeDir: vi.fn(async () => ({ status: "none" })) });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.codeSearch).toEqual({ status: "skipped", reason: "no-folder" });
+    expect(out.servicesNotice).toBeUndefined();
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+    expect(s.searchCode).not.toHaveBeenCalled();
+  });
+
+  it("noPermissionSetsNoticeAndSkips", async () => {
+    const s = on({}, { codeDir: vi.fn(async () => ({ status: "no-permission" })) });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.codeSearch).toEqual({ status: "skipped", reason: "no-permission" });
+    expect(out.servicesNotice).toBe(SERVICES_NOTICE);
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+    expect(s.searchCode).not.toHaveBeenCalled();
+  });
+
+  it("searchErrorDoesNotFailMeeting", async () => {
+    const s = on({}, { searchCode: vi.fn(async () => { throw new Error("disk"); }) });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.codeSearch).toEqual({ status: "done", keywords: [], services: [], limitHit: false });
+  });
+
+  it("keywordOpenRouterErrorFailsStep", async () => {
+    const extractKeywords = vi.fn(async (): Promise<{ keywords: string[]; cost: number }> => {
+      throw new OpenRouterError("Your OpenRouter credit ran out. Add credit at openrouter.ai, then press Retry.", "402", 402);
+    });
+    const s = on({}, { extractKeywords });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("error");
+    expect(out.error).toContain("credit ran out");
+    expect(out.codeSearch).toBeUndefined();
+    expect(s.get().codeSearch).toBeUndefined();
+    expect(s.complete).not.toHaveBeenCalled();
+    // Retry re-runs the code step
+    extractKeywords.mockImplementation(async () => ({ keywords: ["wallet"], cost: 0 }));
+    const again = await processMeeting("m1", s.deps);
+    expect(again.status).toBe("ready");
+    expect(again.codeSearch?.status).toBe("done");
+    expect(extractKeywords).toHaveBeenCalledTimes(2);
+  });
+
+  it("resumeSkipsDoneCodeStep", async () => {
+    const done = { status: "done" as const, keywords: ["x"], services: [], limitHit: true };
+    const s = on({ codeSearch: done });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.codeSearch).toEqual(done);
+    expect(s.codeDir).not.toHaveBeenCalled();
+    expect(s.extractKeywords).not.toHaveBeenCalled();
+    expect(s.searchCode).not.toHaveBeenCalled();
+    expect(promptOf(s)).toContain("(search stopped at a limit; results may be partial)");
+  });
+});
+
+describe("resolveCodeDir", () => {
+  const handle = (perm: PermissionState | Error) => ({
+    name: "services",
+    queryPermission: vi.fn(async () => { if (perm instanceof Error) throw perm; return perm; }),
+  }) as unknown as FileSystemDirectoryHandle;
+
+  it("noSavedFolderIsNone", async () => {
+    expect(await resolveCodeDir(async () => undefined)).toEqual({ status: "none" });
+  });
+  it("grantedIsOk", async () => {
+    const h = handle("granted");
+    expect(await resolveCodeDir(async (k) => (k === "services" ? h : undefined))).toEqual({ status: "ok", dir: h });
+  });
+  it.each(["prompt", "denied", new Error("gone")] as const)("notGrantedIsNoPermission %s", async (perm) => {
+    expect(await resolveCodeDir(async () => handle(perm as PermissionState | Error))).toEqual({ status: "no-permission" });
+  });
+  it("handleLookupFailureIsNoPermission", async () => {
+    expect(await resolveCodeDir(async () => { throw new Error("idb"); })).toEqual({ status: "no-permission" });
   });
 });

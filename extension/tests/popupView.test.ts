@@ -52,6 +52,10 @@ describe("popupView", () => {
     expect(stepText(rec({ status: "ready" }))).toBeNull();
   });
 
+  it("stepTextCode", () => {
+    expect(stepText(rec({ status: "processing", step: "code" }))).toBe("Searching your code…");
+  });
+
   it("progressGrowsWithSteps", () => {
     const t1 = progressFor(rec({ status: "processing", step: "transcribing", chunks: chunks(4), chunkTurns: [null, null, null, null] }));
     const t2 = progressFor(rec({ status: "processing", step: "transcribing", chunks: chunks(4), chunkTurns: [[], [], null, null] }));

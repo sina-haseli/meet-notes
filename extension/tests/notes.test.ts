@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNotesPrompt, splitNotesOutput, NotesError, NOTES_MAX_TOKENS } from "../src/lib/notes";
+import { buildNotesPrompt, renderCodeEvidence, splitNotesOutput, NotesError, NOTES_MAX_TOKENS } from "../src/lib/notes";
 import { TEMPLATES } from "../src/lib/templates";
 import type { MeetingType } from "../src/types";
 
@@ -58,5 +58,64 @@ describe("templates", () => {
       expect(t).toContain("<<<SUMMARY>>>");
       expect(t).not.toContain("<<<EMAIL>>>");
     }
+  });
+});
+
+describe("code evidence", () => {
+  it("renderCodeEvidenceStates", () => {
+    expect(renderCodeEvidence(undefined)).toBe("(code search not run)");
+    expect(renderCodeEvidence({ status: "skipped", reason: "no-permission" })).toBe("(code search skipped: no-permission)");
+    expect(renderCodeEvidence({ status: "done", keywords: ["a"], services: [], limitHit: false })).toBe("(no matching code found)");
+    const done = renderCodeEvidence({
+      status: "done", keywords: ["wallet", "refund"], limitHit: false,
+      services: [
+        { service: "maserati", keywords: ["wallet", "refund"], files: [
+          { path: "maserati/wallet/refund.go", snippets: ["func Refund(w *Wallet) error {", "// refund wallet"] },
+          { path: "maserati/config.yaml", snippets: [] },
+        ] },
+        { service: "ford", keywords: ["wallet"], files: [{ path: "ford/w.ts", snippets: ["const wallet = 1"] }] },
+      ],
+    });
+    expect(done).toBe(
+      "### maserati (matched: wallet, refund)\n" +
+      "- maserati/wallet/refund.go\n" +
+      "    > func Refund(w *Wallet) error {\n" +
+      "    > // refund wallet\n" +
+      "- maserati/config.yaml\n" +
+      "\n" +
+      "### ford (matched: wallet)\n" +
+      "- ford/w.ts\n" +
+      "    > const wallet = 1",
+    );
+    const partial = renderCodeEvidence({ status: "done", keywords: ["a"], services: [], limitHit: true });
+    expect(partial).toContain("(no matching code found)");
+    expect(partial).toContain("(search stopped at a limit; results may be partial)");
+    const partialHits = renderCodeEvidence({
+      status: "done", keywords: ["a"], limitHit: true,
+      services: [{ service: "s", keywords: ["a"], files: [{ path: "s/a.go", snippets: [] }] }],
+    });
+    expect(partialHits.endsWith("(search stopped at a limit; results may be partial)")).toBe(true);
+  });
+
+  it("promptPutsCodeEvidenceAfterServicesContext", () => {
+    const meta = { title: "W", type: "technical" as const, startedAt: "2026-11-06T10:00:00", durationMs: 0, participants: [] };
+    const p = buildNotesPrompt(meta, "t", [], "### svc", { status: "skipped", reason: "off" });
+    expect(p).toContain("## Services context\n### svc\n\n## Code evidence\n(code search skipped: off)\n\n## Transcript\n");
+    expect(buildNotesPrompt(meta, "t", [], null)).toContain("## Code evidence\n(code search not run)");
+  });
+
+  it("standardTemplatesHaveSuggestionRules", () => {
+    for (const t of ["grooming", "planning", "technical"] as const) {
+      const tpl = TEMPLATES[t];
+      expect(tpl).toContain("سرویس‌های احتمالی برای تغییر (پیشنهاد AI)");
+      expect(tpl).toContain("## Where to look in the code (AI suggestion)");
+      expect(tpl).toContain("never file paths");
+      expect(tpl).toContain("No matching code found.");
+      expect(tpl).toContain("Code search skipped (<reason>).");
+      expect(tpl).toContain("`<service> (suggested)`");
+      expect(tpl).toContain("suggestions about where code lives come only from `## Code evidence`");
+    }
+    expect(TEMPLATES.daily).not.toContain("سرویس‌های احتمالی برای تغییر (پیشنهاد AI)");
+    expect(TEMPLATES.daily).not.toContain("## Where to look in the code (AI suggestion)");
   });
 });
