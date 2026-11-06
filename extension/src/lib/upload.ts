@@ -7,6 +7,10 @@ export class UploadError extends Error {
   }
 }
 
+function jsonPart(value: unknown): Blob {
+  return new Blob([JSON.stringify(value)], { type: "application/json" });
+}
+
 export function buildUploadForm(
   meta: UploadMeta,
   log: SpeakerInterval[],
@@ -14,11 +18,36 @@ export function buildUploadForm(
   screens: Screen[],
 ): FormData {
   const form = new FormData();
-  form.append("meta", JSON.stringify(meta));
-  form.append("speaker_log", JSON.stringify(log));
+  // File parts, not string fields: no multipart field-size limit applies to them on the helper.
+  form.append("meta", jsonPart(meta), "meta.json");
+  form.append("speaker_log", jsonPart(log), "speaker_log.json");
   form.append("audio", audio, "audio.webm");
   for (const s of screens) form.append("screens", s.blob, `${s.atMs}.jpg`);
   return form;
+}
+
+/** `HTTP <status>: <detail>` from a FastAPI error response (JSON `detail` or plain text). */
+async function describe(res: Response): Promise<string> {
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    // no body
+  }
+  let detail: unknown = body;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (parsed && typeof parsed === "object" && "detail" in parsed) detail = parsed.detail;
+  } catch {
+    // plain text
+  }
+  const text = (typeof detail === "string" ? detail : JSON.stringify(detail)).trim().slice(0, 300);
+  return text ? `HTTP ${res.status}: ${text}` : `HTTP ${res.status}`;
+}
+
+/** 4xx means the request itself is wrong; sending it again can't help (except 408/429). */
+function retryable(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429;
 }
 
 export async function uploadWithRetry(
@@ -39,8 +68,10 @@ export async function uploadWithRetry(
         body: form,
       });
       if (res.ok) return (await res.json()) as { id: string };
-      lastError = `HTTP ${res.status}`;
+      lastError = await describe(res);
+      if (!retryable(res.status)) throw new UploadError(`upload rejected: ${lastError}`);
     } catch (e) {
+      if (e instanceof UploadError) throw e;
       lastError = e instanceof Error ? e.message : String(e);
     }
     if (i < tries) await new Promise((r) => setTimeout(r, delayMs * i));
