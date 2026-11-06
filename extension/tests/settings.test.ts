@@ -43,4 +43,8 @@ describe("settings", () => {
     expect((await getSettings(fake())).codeSuggestions).toBe(false);
     expect((await getSettings(fake({ token: "t", selfName: "S" }))).codeSuggestions).toBe(false);
   });
+  it("savedV2WithoutCodeSuggestionsIsFalse", async () => {
+    const st = fake({ settings: { setupDone: true, role: "technical", selfName: "S" } });
+    expect((await getSettings(st)).codeSuggestions).toBe(false);
+  });
 });
