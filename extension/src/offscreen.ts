@@ -363,7 +363,7 @@ async function fetchSettings(): Promise<Settings> {
     !reply ||
     typeof reply !== "object" ||
     typeof reply.role !== "string" ||
-    typeof reply.openrouterKey !== "string" ||
+    typeof reply.apiKey !== "string" ||
     !reply.models ||
     typeof reply.models !== "object"
   ) {

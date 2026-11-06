@@ -1,11 +1,12 @@
-// First-time setup in the popup: 1 OpenRouter key -> 2 name & role -> 3 services folder
+// First-time setup in the popup: 1 AI provider & key -> 2 name & role -> 3 services folder
 // (technical role only; can be skipped). Pure, so the popup and the settings page agree.
 import type { Settings } from "./settings";
+import { baseUrlFor } from "./provider";
 
 export type SetupStep = 1 | 2 | 3;
 
 function keyDone(s: Settings): boolean {
-  return s.openrouterKey.trim() !== "";
+  return s.apiKey.trim() !== "" && baseUrlFor(s.provider, s.baseUrl) !== null;
 }
 function nameRoleDone(s: Settings): boolean {
   return s.selfName.trim() !== "" && s.role !== "";

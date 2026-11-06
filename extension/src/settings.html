@@ -40,16 +40,31 @@
     </header>
 
     <section class="mn-card" id="secKey">
-      <div class="hd">OpenRouter key</div>
-      <div class="mn-row">
-        <span class="masked" id="keyMasked"></span>
-        <div class="mn-sp"></div>
-        <button class="mn-btn-ghost" id="keyChange">Change</button>
+      <div class="hd">AI provider</div>
+      <div class="field">
+        <label class="mn-label" for="provider">Provider</label>
+        <select class="mn-input" id="provider">
+          <option value="openrouter">OpenRouter</option>
+          <option value="avalai">AvalAI</option>
+          <option value="custom">Other (OpenAI-compatible)</option>
+        </select>
       </div>
-      <div id="keyEdit" hidden>
-        <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" aria-label="OpenRouter API key" />
-        <div class="mn-hint">Create a key at
-          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.</div>
+      <div class="field" id="baseUrlField" hidden>
+        <label class="mn-label" for="baseUrl">API address</label>
+        <input class="mn-input" id="baseUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1" />
+        <div class="mn-hint">The address that comes before <code>/chat/completions</code>. It must start with https://.</div>
+      </div>
+      <div class="field">
+        <div class="mn-label">API key</div>
+        <div class="mn-row">
+          <span class="masked" id="keyMasked"></span>
+          <div class="mn-sp"></div>
+          <button class="mn-btn-ghost" id="keyChange">Change</button>
+        </div>
+        <div id="keyEdit" hidden>
+          <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" aria-label="API key" />
+          <div class="mn-hint" id="keyHint"></div>
+        </div>
       </div>
       <div id="keyStatus" class="mn-hint msg"></div>
     </section>
@@ -87,11 +102,11 @@
         <span class="mn-err-text">Chrome needs permission again →</span>
         <button class="mn-btn-ghost" id="allowFolder">Allow</button>
       </div>
-      <div class="mn-hint">Meet Notes reads only folder names, README files and package manifests, to get service names right. They are sent to OpenRouter with the meeting. With the switch below on, it also searches the code.</div>
+      <div class="mn-hint">Meet Notes reads only folder names, README files and package manifests, to get service names right. They are sent to your AI provider with the meeting. With the switch below on, it also searches the code.</div>
       <div id="folderMsg" class="msg mn-err-text"></div>
       <div class="field">
         <label class="toggle"><input type="checkbox" id="codeOn" /> Suggest where to change the code</label>
-        <div class="mn-hint">After each grooming, planning or technical meeting, Meet Notes searches your folder's code for words from the meeting and suggests which services the work belongs to. Short snippets around matching lines are sent to OpenRouter with the meeting. Config files contribute only their paths.</div>
+        <div class="mn-hint">After each grooming, planning or technical meeting, Meet Notes searches your folder's code for words from the meeting and suggests which services the work belongs to. Short snippets around matching lines are sent to your AI provider with the meeting. Config files contribute only their paths.</div>
         <div id="codeHint" class="msg mn-hint"></div>
       </div>
     </section>
@@ -101,6 +116,7 @@
         <summary>Advanced</summary>
 
         <div class="hd">Models</div>
+        <div class="mn-hint">Write model names the way your provider lists them (OpenRouter: <code>google/gemini-2.5-flash</code>, AvalAI: <code>gemini-2.5-flash</code>). The transcription model must accept audio, the screenshots model images. Choosing another provider resets these to its defaults.</div>
         <div class="field model-row">
           <div><label class="mn-label" for="mTranscribe">Transcription</label>
             <input class="mn-input" id="mTranscribe" type="text" spellcheck="false" autocomplete="off" /></div>
@@ -118,7 +134,7 @@
         </div>
 
         <div class="hd" style="margin-top:18px">Local helper</div>
-        <label class="toggle"><input type="checkbox" id="helperOn" /> Use the local helper instead of OpenRouter in the browser</label>
+        <label class="toggle"><input type="checkbox" id="helperOn" /> Use the local helper instead of processing in the browser</label>
         <div id="helperMsg" class="msg mn-err-text"></div>
         <div class="field">
           <label class="mn-label" for="helperUrl">Helper URL</label>

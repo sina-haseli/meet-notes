@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   OpenRouterError, complete, transcribeChunk, describeImage, checkKey,
 } from "../src/lib/openrouter";
+import { makeApi, PROVIDERS } from "../src/lib/provider";
+
+const or = (key: string) => makeApi("openrouter", PROVIDERS.openrouter.baseUrl, key);
 
 type Call = { url: string; init: RequestInit };
 
@@ -44,7 +47,7 @@ async function failure(p: Promise<unknown>): Promise<OpenRouterError> {
 describe("complete", () => {
   it("sendsModelContentAndUsage", async () => {
     const h = harness([ok()]);
-    await complete("sk-key", "m/x", [{ type: "text", text: "yo" }], { maxTokens: 50 }, h.deps);
+    await complete(or("sk-key"), "m/x", [{ type: "text", text: "yo" }], { maxTokens: 50 }, h.deps);
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
     const headers = h.calls[0].init.headers as Record<string, string>;
@@ -59,23 +62,23 @@ describe("complete", () => {
 
   it("omits max_tokens when not given", async () => {
     const h = harness([ok()]);
-    await complete("k", "m", [], undefined, h.deps);
+    await complete(or("k"), "m", [], undefined, h.deps);
     expect(JSON.parse(h.calls[0].init.body as string)).not.toHaveProperty("max_tokens");
   });
 
   it("parsesTextAndCost", async () => {
     const h = harness([ok("hello", 0.0123)]);
-    expect(await complete("k", "m", [], {}, h.deps)).toEqual({ text: "hello", cost: 0.0123 });
+    expect(await complete(or("k"), "m", [], {}, h.deps)).toEqual({ text: "hello", cost: 0.0123 });
   });
 
   it("cost is 0 when usage is missing", async () => {
     const h = harness([ok("hello")]);
-    expect((await complete("k", "m", [], {}, h.deps)).cost).toBe(0);
+    expect((await complete(or("k"), "m", [], {}, h.deps)).cost).toBe(0);
   });
 
   it("retries429Then200", async () => {
     const h = harness([status(429), ok("late")]);
-    const r = await complete("k", "m", [], {}, h.deps);
+    const r = await complete(or("k"), "m", [], {}, h.deps);
     expect(r.text).toBe("late");
     expect(h.sleeps).toEqual([2000]);
     expect(h.calls).toHaveLength(2);
@@ -83,7 +86,7 @@ describe("complete", () => {
 
   it("gives503FriendlyAfterThreeTries", async () => {
     const h = harness([status(503, "down")]);
-    const e = await failure(complete("k", "m", [], {}, h.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, h.deps));
     expect(e).toBeInstanceOf(OpenRouterError);
     expect(e.userMessage).toBe(BUSY);
     expect(e.detail).toBe("HTTP 503: down");
@@ -94,7 +97,7 @@ describe("complete", () => {
 
   it("fails402Immediately", async () => {
     const h = harness([status(402)]);
-    const e = await failure(complete("k", "m", [], {}, h.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, h.deps));
     expect(e.userMessage).toBe("Your OpenRouter credit ran out. Add credit at openrouter.ai, then press Retry.");
     expect(h.calls).toHaveLength(1);
     expect(h.sleeps).toEqual([]);
@@ -102,29 +105,29 @@ describe("complete", () => {
 
   it("fails401Immediately", async () => {
     const h = harness([status(401)]);
-    const e = await failure(complete("k", "m", [], {}, h.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, h.deps));
     expect(e.userMessage).toBe("OpenRouter rejected your API key. Check it in Settings, then press Retry.");
     expect(h.calls).toHaveLength(1);
   });
 
   it("403 is the key message and 400 is unexpected, both immediate", async () => {
     const a = harness([status(403)]);
-    expect((await failure(complete("k", "m", [], {}, a.deps))).userMessage).toMatch(/rejected your API key/);
+    expect((await failure(complete(or("k"), "m", [], {}, a.deps))).userMessage).toMatch(/rejected your API key/);
     const b = harness([status(400)]);
-    const e = await failure(complete("k", "m", [], {}, b.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, b.deps));
     expect(e.userMessage).toBe("OpenRouter returned something unexpected. Press Retry.");
     expect(b.calls).toHaveLength(1);
   });
 
   it("truncates detail to 500 chars of body", async () => {
     const h = harness([status(400, "x".repeat(900))]);
-    const e = await failure(complete("k", "m", [], {}, h.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, h.deps));
     expect(e.detail).toBe("HTTP 400: " + "x".repeat(500));
   });
 
   it("networkErrorFriendly", async () => {
     const h = harness([new TypeError("Failed to fetch")]);
-    const e = await failure(complete("sk-secret", "m", [], {}, h.deps));
+    const e = await failure(complete(or("sk-secret"), "m", [], {}, h.deps));
     expect(e.userMessage).toBe("Couldn't reach OpenRouter. Check your internet connection, then press Retry.");
     expect(h.calls).toHaveLength(3);
     expect(h.sleeps).toEqual([2000, 8000]);
@@ -133,7 +136,7 @@ describe("complete", () => {
 
   it("a bad 200 body is unexpected, not retried", async () => {
     const h = harness([new Response(JSON.stringify({ nope: 1 }), { status: 200 })]);
-    const e = await failure(complete("k", "m", [], {}, h.deps));
+    const e = await failure(complete(or("k"), "m", [], {}, h.deps));
     expect(e.userMessage).toBe("OpenRouter returned something unexpected. Press Retry.");
     expect(h.calls).toHaveLength(1);
   });
@@ -142,19 +145,19 @@ describe("complete", () => {
 describe("checkKey", () => {
   it("checkKeyOkAndRemaining", async () => {
     const h = harness([new Response(JSON.stringify({ data: { limit_remaining: 1.98 } }), { status: 200 })]);
-    expect(await checkKey("k", h.deps)).toEqual({ ok: true, remainingUsd: 1.98 });
+    expect(await checkKey(or("k"), h.deps)).toEqual({ ok: true, remainingUsd: 1.98 });
     expect(h.calls[0].url).toBe("https://openrouter.ai/api/v1/key");
     expect((h.calls[0].init.headers as Record<string, string>)["Authorization"]).toBe("Bearer k");
   });
 
   it("null when there is no limit", async () => {
     const h = harness([new Response(JSON.stringify({ data: { limit_remaining: null } }), { status: 200 })]);
-    expect(await checkKey("k", h.deps)).toEqual({ ok: true, remainingUsd: null });
+    expect(await checkKey(or("k"), h.deps)).toEqual({ ok: true, remainingUsd: null });
   });
 
   it("checkKey401", async () => {
     const h = harness([status(401)]);
-    expect(await checkKey("k", h.deps)).toEqual({
+    expect(await checkKey(or("k"), h.deps)).toEqual({
       ok: false,
       userMessage: "OpenRouter rejected your API key. Check it in Settings, then press Retry.",
     });
@@ -165,7 +168,7 @@ describe("media helpers", () => {
   it("transcribeChunkSendsMp3Base64", async () => {
     const bytes = new Uint8Array([0, 1, 2, 250, 251, 252, 255]);
     const h = harness([ok("t")]);
-    await transcribeChunk("k", "m", new Blob([bytes]), h.deps);
+    await transcribeChunk(or("k"), "m", new Blob([bytes]), h.deps);
     const body = JSON.parse(h.calls[0].init.body as string);
     const parts = body.messages[0].content;
     const audio = parts.find((p: { type: string }) => p.type === "input_audio");
@@ -176,7 +179,7 @@ describe("media helpers", () => {
 
   it("describeImage sends a jpeg data URL after the prompt", async () => {
     const h = harness([ok("d")]);
-    await describeImage("k", "m", new Blob([new Uint8Array([1, 2, 3])]), "what?", h.deps);
+    await describeImage(or("k"), "m", new Blob([new Uint8Array([1, 2, 3])]), "what?", h.deps);
     const parts = JSON.parse(h.calls[0].init.body as string).messages[0].content;
     expect(parts[0]).toEqual({ type: "text", text: "what?" });
     expect(parts[1]).toEqual({ type: "image_url", image_url: { url: "data:image/jpeg;base64,AQID" } });
@@ -185,9 +188,62 @@ describe("media helpers", () => {
   it("base64LargeBlob", async () => {
     const big = new Uint8Array(3 * 1024 * 1024).map((_, i) => i % 251);
     const h = harness([ok()]);
-    await transcribeChunk("k", "m", new Blob([big]), h.deps);
+    await transcribeChunk(or("k"), "m", new Blob([big]), h.deps);
     const body = JSON.parse(h.calls[0].init.body as string);
     const data = body.messages[0].content.find((p: { type: string }) => p.type === "input_audio").input_audio.data;
     expect(decode(data)).toEqual(big);
+  });
+});
+
+describe("other providers", () => {
+  const aval = (key = "k") => makeApi("avalai", PROVIDERS.avalai.baseUrl, key);
+  const custom = (key = "k") => makeApi("custom", "https://llm.example.com/v1", key);
+
+  it("sends to the provider's address without OpenRouter extras", async () => {
+    const h = harness([ok("hi")]);
+    await complete(aval("aa-key"), "gemini-2.5-flash", [{ type: "text", text: "yo" }], { maxTokens: 5 }, h.deps);
+    expect(h.calls[0].url).toBe("https://api.avalai.ir/v1/chat/completions");
+    const headers = h.calls[0].init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer aa-key");
+    expect(headers).not.toHaveProperty("X-Title");
+    const body = JSON.parse(h.calls[0].init.body as string);
+    expect(body).not.toHaveProperty("usage");
+    expect(body.model).toBe("gemini-2.5-flash");
+    expect(body.max_tokens).toBe(5);
+  });
+
+  it("still reads a cost when a provider reports one", async () => {
+    const h = harness([ok("hi", 0.5)]);
+    expect((await complete(custom(), "m", [], {}, h.deps)).cost).toBe(0.5);
+  });
+
+  it("names the provider in its messages", async () => {
+    const a = harness([status(401)]);
+    expect((await failure(complete(aval(), "m", [], {}, a.deps))).userMessage)
+      .toBe("AvalAI rejected your API key. Check it in Settings, then press Retry.");
+    const b = harness([status(402)]);
+    expect((await failure(complete(aval(), "m", [], {}, b.deps))).userMessage)
+      .toBe("Your AvalAI credit ran out. Add credit at avalai.ir, then press Retry.");
+    const c = harness([status(402)]);
+    expect((await failure(complete(custom(), "m", [], {}, c.deps))).userMessage)
+      .toBe("Your llm.example.com credit ran out. Add credit with your provider, then press Retry.");
+    const d = harness([new TypeError("Failed to fetch")]);
+    expect((await failure(complete(custom(), "m", [], {}, d.deps))).userMessage)
+      .toBe("Couldn't reach llm.example.com. Check your internet connection, then press Retry.");
+  });
+
+  it("checks the key with the model list", async () => {
+    const h = harness([new Response(JSON.stringify({ data: [] }), { status: 200 })]);
+    expect(await checkKey(aval("aa-key"), h.deps)).toEqual({ ok: true, remainingUsd: null });
+    expect(h.calls[0].url).toBe("https://api.avalai.ir/v1/models");
+    expect((h.calls[0].init.headers as Record<string, string>)["Authorization"]).toBe("Bearer aa-key");
+  });
+
+  it("a rejected key fails the check", async () => {
+    const h = harness([status(401)]);
+    expect(await checkKey(custom(), h.deps)).toEqual({
+      ok: false,
+      userMessage: "llm.example.com rejected your API key. Check it in Settings, then press Retry.",
+    });
   });
 });

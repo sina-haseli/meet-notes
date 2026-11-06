@@ -12,6 +12,7 @@ import {
 } from "../src/lib/popupView";
 import { keyCheckText } from "../src/lib/setupFlow";
 import { checkKey } from "../src/lib/openrouter";
+import { makeApi, PROVIDERS } from "../src/lib/provider";
 
 function rec(patch: Partial<MeetingRecord> = {}): MeetingRecord {
   return {
@@ -110,7 +111,7 @@ describe("popupView", () => {
       fetch: (async () => new Response("unauthorized", { status: 401 })) as unknown as typeof fetch,
       sleep: async () => undefined,
     };
-    const res = await checkKey("sk-bad", deps);
+    const res = await checkKey(makeApi("openrouter", PROVIDERS.openrouter.baseUrl, "sk-bad"), deps);
     expect(keyCheckText(res)).toBe("OpenRouter rejected your API key. Check that you pasted the whole key.");
   });
 });

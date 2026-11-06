@@ -109,7 +109,8 @@ function renderHeader(r: MeetingRecord): void {
   $("when").textContent = dateLine(r);
   $("typeChip").textContent = typeLabel(r.type);
   $("cost").textContent = `$${(r.costUsd ?? 0).toFixed(2)}`;
-  $("cost").hidden = r.mode === "helper";
+  // Only OpenRouter reports cost; other providers leave it 0, which would read as "free".
+$("cost").hidden = r.mode === "helper" || !r.costUsd;
 }
 
 function renderBanners(r: MeetingRecord): void {

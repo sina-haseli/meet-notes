@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { parseKeywords, extractKeywords, KEYWORDS_PROMPT } from "../src/lib/codeKeywords";
+import { makeApi, PROVIDERS } from "../src/lib/provider";
+
+const API = makeApi("openrouter", PROVIDERS.openrouter.baseUrl, "k");
 
 describe("codeKeywords", () => {
   it("parseKeywordsDefensive", () => {
@@ -16,11 +19,11 @@ describe("codeKeywords", () => {
   });
   it("extractKeywordsSendsTranscriptAndPrompt", async () => {
     const calls: { model: string; text: string }[] = [];
-    const fake = (async (_k: string, model: string, content: unknown[]) => {
+    const fake = (async (_api: unknown, model: string, content: unknown[]) => {
       calls.push({ model, text: JSON.stringify(content) });
       return { text: '["kavenegar"]', cost: 0.01 };
     }) as unknown as typeof import("../src/lib/openrouter").complete;
-    const r = await extractKeywords("k", "m1", "TRANSCRIPT_BODY", [{ atMs: 0, description: "SCREEN_DESC" }], fake);
+    const r = await extractKeywords(API, "m1", "TRANSCRIPT_BODY", [{ atMs: 0, description: "SCREEN_DESC" }], fake);
     expect(r).toEqual({ keywords: ["kavenegar"], cost: 0.01 });
     expect(calls[0].model).toBe("m1");
     expect(calls[0].text).toContain("TRANSCRIPT_BODY");
