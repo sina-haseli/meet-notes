@@ -22,6 +22,8 @@ class Config:
     openrouter_api_key: str = ""
     transcribe_model: str = "google/gemini-2.5-flash"
     vision_model: str = "google/gemini-2.5-flash"
+    # Model alias or full name passed to `claude -p --model` (runs on the Pro login).
+    claude_model: str = "sonnet"
     self_name: str = "Sina"
     last_recipients: list[str] = field(default_factory=list)
     mail_method: Literal["gmail_api", "smtp"] = "gmail_api"

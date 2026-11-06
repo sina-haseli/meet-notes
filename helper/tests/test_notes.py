@@ -74,12 +74,33 @@ def test_command_line(meeting_folder, tmp_path):
 
     generate_notes(meeting_folder, cfg, run=run)
     cmd, kw = seen["cmd"], seen["kw"]
-    assert cmd[:7] == ["C:/bin/claude.exe", "-p", "--output-format", "json",
-                       "--allowedTools", "Read,Grep,Glob", "--disallowedTools"]
-    assert cmd[7] == "Write,Edit,Bash,WebFetch,WebSearch"
-    assert cmd[8:] == ["--add-dir", str(tmp_path / "r1"), "--add-dir", str(tmp_path / "r2")]
+    assert cmd == [
+        "C:/bin/claude.exe", "-p", "--output-format", "json",
+        # Isolate from Sina's global Claude Code setup (settings, hooks, plugins, MCP, mode, model).
+        "--restricted",
+        "--tools", "Read,Grep,Glob",
+        "--allowedTools", "Read,Grep,Glob",
+        "--disallowedTools", "Write,Edit,Bash,WebFetch,WebSearch",
+        "--strict-mcp-config",
+        "--permission-mode", "dontAsk",
+        "--model", "sonnet",
+        "--add-dir", str(tmp_path / "r1"), "--add-dir", str(tmp_path / "r2"),
+    ]
     assert kw["cwd"] == meeting_folder and kw["timeout"] == 900 and kw["encoding"] == "utf-8"
     assert "**[00:03] Reza:**" in kw["input"]
+
+
+def test_command_line_uses_configured_model(meeting_folder, tmp_path):
+    cfg = Config(token="t", notes_root=tmp_path, repos=[], claude_model="opus")
+    seen = {}
+
+    def run(cmd, **kw):
+        seen.update(cmd=cmd)
+        return ok_run()
+
+    generate_notes(meeting_folder, cfg, run=run)
+    i = seen["cmd"].index("--model")
+    assert seen["cmd"][i + 1] == "opus"
 
 
 def test_claude_missing_raises_clear_error(meeting_folder, cfg, monkeypatch):

@@ -75,9 +75,19 @@ def generate_notes(folder: Path, cfg: Config, run=subprocess.run) -> None:
     sp = folder / "screens.json"
     screens = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else []
     prompt = build_prompt(meta, transcript_md, screens)
+    # Isolate the run from Sina's global Claude Code setup (flags checked against claude 2.1.318):
+    # --restricted ignores user/project/local settings files (hooks, plugins, defaultMode,
+    # model/effort) and refuses bypassPermissions; --tools limits the built-in tool set;
+    # --strict-mcp-config with no --mcp-config loads no MCP servers; dontAsk denies anything not
+    # pre-approved instead of prompting (this CLI has no "default" permission mode choice).
     cmd = [exe, "-p", "--output-format", "json",
+           "--restricted",
+           "--tools", "Read,Grep,Glob",
            "--allowedTools", "Read,Grep,Glob",
            "--disallowedTools", "Write,Edit,Bash,WebFetch,WebSearch",
+           "--strict-mcp-config",
+           "--permission-mode", "dontAsk",
+           "--model", cfg.claude_model,
            *sum((["--add-dir", str(r)] for r in cfg.repos), [])]
     # Force the Pro login: never let an API key from the environment be used.
     env = {k: v for k, v in os.environ.items()

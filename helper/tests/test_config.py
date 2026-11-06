@@ -18,3 +18,11 @@ def test_save_config_roundtrip_uses_cfg_path(tmp_path):
     again = load_config(tmp_path / "config.toml")
     assert again.self_name == "Ali" and again.last_recipients == ["a@x.com"]
     assert again.path == tmp_path / "config.toml"
+
+
+def test_claude_model_defaults_to_sonnet_and_roundtrips(tmp_path):
+    cfg = load_config(tmp_path / "config.toml")
+    assert cfg.claude_model == "sonnet"
+    cfg.claude_model = "opus"
+    save_config(cfg)
+    assert load_config(tmp_path / "config.toml").claude_model == "opus"
