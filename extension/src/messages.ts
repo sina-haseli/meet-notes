@@ -15,12 +15,19 @@ export interface StartMsg {
   meetingType: MeetingType;
   title: string;
 }
-export type PopupMsg = StartMsg | { type: "stop" } | { type: "status" } | { type: "retry-upload" };
+export type PopupMsg =
+  | StartMsg
+  | { type: "stop" }
+  | { type: "status" }
+  | { type: "retry-upload" }
+  | { type: "save-discard" };
 
 export interface StatusResponse {
   state: RecState;
   elapsedMs: number;
   error?: string;
+  /** Non-error information for the idle state (e.g. where the audio was saved). */
+  notice?: string;
   meetingId?: string;
 }
 export interface Ack {
@@ -34,9 +41,14 @@ export interface Ack {
 export type ToOffscreen =
   | { target: "offscreen"; type: "start"; streamId: string; selfName: string }
   | { target: "offscreen"; type: "stop"; meta: UploadMeta; log: SpeakerInterval[]; token: string }
-  | { target: "offscreen"; type: "retry-upload"; token: string };
+  | { target: "offscreen"; type: "retry-upload"; token: string }
+  | { target: "offscreen"; type: "export-audio" };
 export interface OffscreenStartAck extends Ack {
   t0?: number;
+}
+/** Reply to export-audio: a blob: URL of the kept audio, valid while the offscreen doc lives. */
+export interface ExportAudioAck extends Ack {
+  url?: string;
 }
 
 // ---- offscreen -> background ----

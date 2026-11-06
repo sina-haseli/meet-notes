@@ -13,7 +13,9 @@
     #timer { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
     #status { margin-top: 8px; min-height: 1.4em; }
     #status.error { color: #c5221f; }
-    #retry { font: inherit; padding: 2px 8px; }
+    #retry { font: inherit; font-weight: 600; padding: 2px 8px; }
+    #saveDiscard { font: inherit; font-size: 12px; padding: 2px 6px; margin-top: 6px; }
+    #saveDiscard.armed { color: #c5221f; border-color: #c5221f; }
     #detail { color: #5f6368; font-size: 12px; word-break: break-word; }
     details { margin-top: 12px; border-top: 1px solid #dadce0; padding-top: 8px; }
     summary { cursor: pointer; color: #5f6368; }
@@ -40,6 +42,7 @@
   </div>
   <div id="status"><span id="statusText"></span> <button id="retry" class="hidden">Retry</button></div>
   <div id="detail"></div>
+  <button id="saveDiscard" class="hidden" title="Saves the recorded audio to your Downloads folder, then drops it so a new meeting can be recorded.">Save audio &amp; discard</button>
 
   <details id="settings">
     <summary>Settings</summary>

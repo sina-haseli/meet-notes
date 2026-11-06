@@ -12,6 +12,7 @@ const timer = $<HTMLSpanElement>("timer");
 const statusBox = $<HTMLDivElement>("status");
 const statusText = $<HTMLSpanElement>("statusText");
 const retryBtn = $<HTMLButtonElement>("retry");
+const saveDiscardBtn = $<HTMLButtonElement>("saveDiscard");
 const detail = $<HTMLDivElement>("detail");
 const notMeet = $<HTMLDivElement>("notMeet");
 const settings = $<HTMLDetailsElement>("settings");
@@ -26,6 +27,16 @@ let busy = false;
 let last: StatusResponse = { state: "idle", elapsedMs: 0 };
 let message = ""; // transient local message (overrides the status line until the next action)
 let messageIsError = false;
+// "Save audio & discard" needs two clicks (no confirm() dialog): the first one arms it.
+const ARM_MS = 4000;
+let saveArmed = false;
+let armTimer: number | undefined;
+
+function disarm(): void {
+  saveArmed = false;
+  if (armTimer !== undefined) clearTimeout(armTimer);
+  armTimer = undefined;
+}
 
 function fmt(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -54,6 +65,11 @@ function render(): void {
 
   retryBtn.classList.toggle("hidden", st !== "upload-failed");
   retryBtn.disabled = busy;
+  if (st !== "upload-failed") disarm();
+  saveDiscardBtn.classList.toggle("hidden", st !== "upload-failed");
+  saveDiscardBtn.disabled = busy;
+  saveDiscardBtn.classList.toggle("armed", saveArmed);
+  saveDiscardBtn.textContent = saveArmed ? "Click again to save audio & discard" : "Save audio & discard";
 
   let text = "";
   let isError = false;
@@ -68,6 +84,8 @@ function render(): void {
   else if (st === "idle" && last.error) {
     text = last.error; // e.g. "Recording lost: …" after the kept recording disappeared
     isError = true;
+  } else if (st === "idle" && last.notice) {
+    text = last.notice; // e.g. where "Save audio & discard" put the file
   }
   if (message) {
     text = message;
@@ -146,6 +164,25 @@ retryBtn.addEventListener("click", () =>
     if (!res?.ok) say(res?.error ?? "Retry failed.", true);
   }),
 );
+
+saveDiscardBtn.addEventListener("click", () => {
+  if (!saveArmed) {
+    saveArmed = true;
+    armTimer = window.setTimeout(() => {
+      disarm();
+      render();
+    }, ARM_MS);
+    render();
+    return;
+  }
+  disarm();
+  void act(async () => {
+    say("Saving the audio to your Downloads folder…");
+    const res = (await chrome.runtime.sendMessage({ type: "save-discard" })) as Ack | undefined;
+    if (res?.ok) message = ""; // the status line now shows where the file was saved
+    else say(res?.error ?? "Could not save the audio.", true);
+  });
+});
 
 saveBtn.addEventListener("click", async () => {
   await chrome.storage.local.set({ token: tokenIn.value.trim(), selfName: nameIn.value.trim() });

@@ -2,7 +2,7 @@
 // records it, samples screen changes, detects self-speaking, and uploads. The recording is kept in
 // memory until an upload succeeds, so a failed upload can be retried.
 import type { Screen, SpeakerInterval, UploadMeta } from "./types";
-import type { Ack, FromOffscreen, OffscreenStartAck, ToOffscreen } from "./messages";
+import type { Ack, ExportAudioAck, FromOffscreen, OffscreenStartAck, ToOffscreen } from "./messages";
 import { UPLOAD_URL } from "./messages";
 import { CHANGE_THRESHOLD, frameDiff } from "./lib/frameDiff";
 import { SpeakingDetector } from "./lib/speakingDetector";
@@ -13,6 +13,8 @@ const THUMB_H = 36;
 const RMS_EVERY_MS = 50;
 const FRAME_EVERY_MS = 2000;
 const TIMESLICE_MS = 10_000;
+/** Keep at most this many screen changes (bounds memory and upload size). */
+const MAX_SCREENS = 300;
 
 interface Recording {
   t0: number;
@@ -26,6 +28,7 @@ interface Recording {
   timers: number[];
   frameJob: Promise<void> | null;
   lastThumb: Uint8Array | null;
+  screensCapped: boolean;
   stopping: boolean;
 }
 
@@ -39,6 +42,7 @@ interface Pending {
 let rec: Recording | null = null;
 let pending: Pending | null = null;
 let uploading = false;
+let exportUrl: string | null = null;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -103,6 +107,7 @@ async function startRecording(streamId: string, selfName: string): Promise<numbe
       timers: [],
       frameJob: null,
       lastThumb: null,
+      screensCapped: false,
       stopping: false,
     };
 
@@ -157,6 +162,11 @@ async function sampleFrame(r: Recording): Promise<void> {
     }
     // The first frame counts as a change, so the screen at recording start is kept too.
     if (r.lastThumb && frameDiff(r.lastThumb, gray) < CHANGE_THRESHOLD) return;
+    if (r.screens.length >= MAX_SCREENS) {
+      if (!r.screensCapped) console.warn(`screen limit (${MAX_SCREENS}) reached; no more screens are kept`);
+      r.screensCapped = true;
+      return;
+    }
 
     const full = new OffscreenCanvas(v.videoWidth, v.videoHeight);
     const fctx = full.getContext("2d") as OffscreenCanvasRenderingContext2D;
@@ -220,7 +230,7 @@ async function upload(token: string): Promise<void> {
 
 // ---------- routing ----------
 
-async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck> {
+async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | ExportAudioAck> {
   switch (msg.type) {
     case "start": {
       if (rec) return { ok: false, error: "Already recording." };
@@ -265,6 +275,13 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck> {
       if (uploading) return { ok: true };
       void upload(msg.token);
       return { ok: true };
+    }
+    case "export-audio": {
+      // "Save audio & discard": the background downloads this URL, then closes this document.
+      if (!pending) return { ok: false, kept: false, error: "The recording is no longer in memory." };
+      if (uploading) return { ok: false, kept: true, error: "An upload is in progress." };
+      exportUrl ??= URL.createObjectURL(pending.audio);
+      return { ok: true, url: exportUrl };
     }
   }
 }

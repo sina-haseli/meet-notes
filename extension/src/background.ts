@@ -4,6 +4,7 @@ import type { MeetingType, SpeakerInterval, UploadMeta } from "./types";
 import type {
   Ack,
   CollectResponse,
+  ExportAudioAck,
   FromOffscreen,
   OffscreenStartAck,
   PopupMsg,
@@ -15,6 +16,7 @@ import type {
 import { OFFSCREEN_PATH } from "./messages";
 import { localIso } from "./lib/localIso";
 import { stateAfterFailure } from "./lib/failureState";
+import { audioFileName, downloadAndWait } from "./lib/download";
 
 const COLLECT_TIMEOUT_MS = 3000;
 
@@ -27,6 +29,7 @@ interface Session {
   title?: string;
   selfName?: string;
   error?: string;
+  notice?: string;
   meetingId?: string;
 }
 
@@ -215,6 +218,44 @@ async function retryUpload(): Promise<Ack> {
   return { ok: true };
 }
 
+/**
+ * Escape hatch for an upload that keeps failing (ruling R9): save the kept audio to the
+ * Downloads folder, then drop the recording and go idle so the next meeting can be recorded.
+ */
+async function saveAndDiscard(): Promise<Ack> {
+  const s = await getSession();
+  if (s.state !== "upload-failed") return { ok: false, error: "Nothing to save." };
+  if (!(await hasOffscreen())) {
+    const error = await applyFailure(s, undefined, "the recorder page was closed.");
+    return { ok: false, error };
+  }
+  let res: ExportAudioAck | undefined;
+  try {
+    res = await sendToOffscreen<ExportAudioAck>({ target: "offscreen", type: "export-audio" });
+  } catch (e) {
+    res = { ok: false, error: errText(e) };
+  }
+  if (!res?.ok || !res.url) {
+    if (res?.kept === false) {
+      const error = await applyFailure(s, res, "The recorder did not respond.");
+      return { ok: false, error };
+    }
+    return { ok: false, error: res?.error ?? "The recorder did not respond." };
+  }
+  const startedIso = s.startedAt !== undefined ? localIso(s.startedAt) : "";
+  let savedPath: string;
+  try {
+    // The blob: URL lives in the offscreen doc, so it stays open until the file is written.
+    savedPath = await downloadAndWait(chrome.downloads, res.url, audioFileName(startedIso));
+  } catch (e) {
+    // Recording still in memory: stay upload-failed so Retry / Save stay possible.
+    return { ok: false, error: errText(e) };
+  }
+  await setSession({ state: "idle", notice: `Audio saved to ${savedPath}. The recording was discarded.` });
+  await closeOffscreen();
+  return { ok: true };
+}
+
 async function uploadResult(msg: Extract<FromOffscreen, { type: "upload-result" }>): Promise<void> {
   const s = await getSession();
   if (msg.ok) {
@@ -234,6 +275,7 @@ async function status(): Promise<StatusResponse> {
   }
   const out: StatusResponse = { state: s.state, elapsedMs };
   if (s.error) out.error = s.error;
+  if (s.notice) out.notice = s.notice;
   if (s.meetingId) out.meetingId = s.meetingId;
   return out;
 }
@@ -264,6 +306,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       break;
     case "retry-upload":
       work = serial(retryUpload);
+      break;
+    case "save-discard":
+      work = serial(saveAndDiscard);
       break;
     default:
       return false;
