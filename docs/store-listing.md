@@ -16,9 +16,9 @@ Meet Notes records a Google Meet meeting when you press Start and, when you pres
 - a **Transcript** with speaker names and timestamps,
 - **Screens**: images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described, each with a short description.
 
-How it works: setup takes three steps (your OpenRouter key, your name in Meet, and optionally a services folder so notes use your real service names; an optional switch, “Suggest where to change the code”, also searches that folder's code and sends short snippets of matching lines, with secrets masked, to OpenRouter with the meeting). Processing runs inside Chrome and uses your own OpenRouter key, so there is no Meet Notes account and no Meet Notes server. If you close Chrome mid-processing, it resumes when you reopen it.
+How it works: setup takes three steps (your OpenRouter key, your name in Meet, and optionally a services folder so notes use your real service names; an optional switch, “Suggest where to change the code”, also searches that folder's code and sends the paths of matching files and short snippets of matching lines, with secrets masked, to OpenRouter with the meeting). Processing runs inside Chrome and uses your own OpenRouter key, so there is no Meet Notes account and no Meet Notes server. If you close Chrome mid-processing, it resumes when you reopen it.
 
-Privacy: audio and screenshots go only to OpenRouter to make your notes. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described. Everything else stays in your browser. No analytics, no tracking. Nothing is emailed or shared unless you click Copy or Open in Gmail.
+Privacy: audio and screenshots go only to OpenRouter to make your notes. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described. Everything else stays in your browser, except that with “Suggest where to change the code” switched on, short code snippets (secrets masked) and file paths from your services folder are also sent to OpenRouter. No analytics, no tracking. Nothing is emailed or shared unless you click Copy or Open in Gmail.
 
 Typical cost is about $0.10 to $0.20 for a one-hour meeting, paid to OpenRouter with your own key.
 
@@ -43,7 +43,7 @@ Please tell the people in your meeting that you are recording.
 - **Is data sold to third parties?** No.
 - **Used or transferred for purposes unrelated to the single purpose?** No.
 - **Used or transferred to determine creditworthiness or for lending?** No.
-- **Where does it go?** Only to OpenRouter (to make the notes), using the user's own key: the audio, up to 60 screenshots of the Meet tab per meeting (shared screen and participants' video), speaker names and the optional services text. If the user turns on “Suggest where to change the code”, short snippets of matching lines from the services folder's code (secrets masked; config files only by name) are also sent, only for grooming, planning and technical meetings. Everything else stays in the user's browser.
+- **Where does it go?** Only to OpenRouter (to make the notes), using the user's own key: the audio, up to 60 screenshots of the Meet tab per meeting (shared screen and participants' video), speaker names and the optional services text. If the user turns on “Suggest where to change the code”, the paths of matching files and short snippets of matching lines from the services folder's code (secrets masked; config files only by path, never their content) are also sent, only for grooming, planning and technical meetings. Everything else stays in the user's browser.
 - **Certify:** Limited Use compliance, and that the data usage follows the Developer Program Policies.
 - **Privacy policy URL:** publish `docs/privacy-policy.md` (for example on GitHub Pages) and paste its URL. Fill in the contact email first.
 
