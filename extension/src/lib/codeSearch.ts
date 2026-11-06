@@ -50,6 +50,34 @@ function normalize(keywords: string[]): Keyword[] {
   return out;
 }
 
+/**
+ * Up to `chars` characters of a matching line, centred on its first keyword match. The whole line
+ * is masked before anything is cut (masking is linear and a file is at most 512 KB), so neither a
+ * cut nor a missing context (a secret name or an opening quote far from the keyword) can expose
+ * part of a secret.
+ */
+function snippetAround(line: string, found: Keyword[], chars: number): string {
+  const lower = line.toLowerCase();
+  let at = lower.length;
+  for (const k of found) {
+    const i = lower.indexOf(k.lower);
+    if (i !== -1) at = Math.min(at, i);
+  }
+  const masked = maskSecrets(line);
+  const mLower = masked.toLowerCase();
+  // Find a matched keyword again in the masked text; if masking removed every occurrence, fall back
+  // to the same relative position.
+  let pos = -1;
+  let len = 0;
+  for (const k of found) {
+    const i = mLower.indexOf(k.lower);
+    if (i !== -1 && (pos === -1 || i < pos)) { pos = i; len = k.lower.length; }
+  }
+  if (pos === -1) pos = Math.floor((at / Math.max(1, line.length)) * masked.length);
+  const from = Math.max(0, Math.min(pos + Math.floor(len / 2) - Math.floor(chars / 2), masked.length - chars));
+  return masked.slice(from, from + chars).trim();
+}
+
 export async function searchCode(
   dir: FileSystemDirectoryHandle,
   keywords: string[],
@@ -94,8 +122,10 @@ export async function searchCode(
       if (found.length === 0) continue;
       hits++;
       for (const k of found) kw.add(k.lower);
-      // Mask the whole line before cutting it, so a cut can never expose part of a secret.
-      if (!config && snippets.length < limits.linesPerFile) snippets.push(maskSecrets(line.trim()).slice(0, limits.lineChars));
+      if (!config && snippets.length < limits.linesPerFile) {
+        const snip = snippetAround(line.trim(), found, limits.lineChars);
+        if (snip) snippets.push(snip);
+      }
     }
     if (hits > 0) acc.files.push({ path: `${acc.service}/${rel}`, pathKw, kw, hits, snippets });
   }

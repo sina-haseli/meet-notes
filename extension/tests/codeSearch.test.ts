@@ -76,6 +76,42 @@ describe("searchCode", () => {
     expect(snip).not.toContain("Zx9abc123def456ghi789");
   });
 
+  it("longLineSnippetIsCentredOnTheKeyword", async () => {
+    const filler = "x = 1; ".repeat(Math.ceil((300 * 1024) / 7));
+    const line = `${filler}const kavenegarApiKey = "hunter2"; sendSms(kavenegar, to)`;
+    const root = fakeDir("services", { maserati: { "min.js": line } });
+    const r = await searchCode(root, ["kavenegar"]);
+    const snip = r.services[0].files[0].snippets[0];
+    expect(snip.length).toBeLessThanOrEqual(200);
+    expect(snip).toContain("kavenegar");
+    expect(snip).not.toContain("hunter2");
+    expect(snip).toContain('"***"');
+  });
+
+  it("noPartialSecretAtTheSnippetEdge", async () => {
+    // A ±1000-char window around the keyword would start 27 chars into this 40-char key, and the
+    // 985-char blob between them masks to ***, so a 200-char cut would reach that edge. The key's
+    // 13-char tail (too short for the long-run rule on its own) must not survive.
+    const key = "a1b2c3d4e5f6g7h8i9j0".repeat(2);
+    const blob = "Ab1".repeat(328) + "A";
+    const line = "x ".repeat(2000) + key + " " + blob + " kavenegar()";
+    const root = fakeDir("services", { maserati: { "min.go": line } });
+    const r = await searchCode(root, ["kavenegar"]);
+    const snip = r.services[0].files[0].snippets[0];
+    expect(snip).toContain("kavenegar");
+    expect(snip).not.toContain(key.slice(27));
+    expect(snip).not.toMatch(/[0-9][a-z][0-9]/);
+  });
+
+  it("secretNameOutsideTheWindowStillMasksIt", async () => {
+    const line = 'const apiKey = ["' + "q".repeat(1500) + '", "hunter", kavenegar]';
+    const root = fakeDir("services", { maserati: { "a.ts": line } });
+    const r = await searchCode(root, ["kavenegar"]);
+    const snip = r.services[0].files[0].snippets[0];
+    expect(snip).toContain("kavenegar");
+    expect(snip).not.toContain("hunter");
+  });
+
   it("skipsVendorNodeModulesAndDotDirs", async () => {
     const log = newLog();
     const hit = "// kavenegar\n";
