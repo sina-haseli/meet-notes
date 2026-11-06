@@ -71,7 +71,12 @@ export async function readServicesContext(dir: FileSystemDirectoryHandle, caps: 
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .slice(0, caps.maxServices);
     for (const s of subs) {
-      blocks.push(await describeService(s.name, await listEntries(s as FileSystemDirectoryHandle), caps));
+      // One unreadable service folder must not lose the whole context: it gets dashes.
+      try {
+        blocks.push(await describeService(s.name, await listEntries(s as FileSystemDirectoryHandle), caps));
+      } catch {
+        blocks.push(`### ${s.name}\nmanifest: -\nREADME:\n-\n`);
+      }
     }
   }
   const text = blocks.join("\n");

@@ -66,4 +66,25 @@ describe("readServicesContext", () => {
     const out = await readServicesContext(fakeDir("r", tree), { ...SERVICES_CAPS, maxServices: 2 });
     expect(out.match(/^### /gm)).toHaveLength(2);
   });
+  it("unreadableSubfolderDegradesToDashes", async () => {
+    const bad = {
+      kind: "directory", name: "locked",
+      async *values() { throw new DOMException("denied", "NotAllowedError"); },
+    } as unknown as FileSystemHandle;
+    const good = fakeDir("ok", { "README.md": "fine" }) as unknown as FileSystemHandle;
+    const root = {
+      kind: "directory", name: "services",
+      async *values() { yield bad; yield good; },
+    } as unknown as FileSystemDirectoryHandle;
+    const out = await readServicesContext(root);
+    expect(out).toContain("### locked\nmanifest: -\nREADME:\n-");
+    expect(out).toContain("### ok\nmanifest: -\nREADME:\nfine");
+  });
+  it("unreadableRootStillRejects", async () => {
+    const root = {
+      kind: "directory", name: "gone",
+      async *values() { throw new DOMException("gone", "NotFoundError"); },
+    } as unknown as FileSystemDirectoryHandle;
+    await expect(readServicesContext(root)).rejects.toThrow();
+  });
 });
