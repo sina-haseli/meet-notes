@@ -78,3 +78,82 @@ def test_transports_construct_and_missing_client_is_clear(tmp_path):
     assert callable(smtp_transport(cfg))
     with pytest.raises(RuntimeError, match="gmail_client.json"):
         gmail_api_transport(cfg)
+
+
+class _FakeFlow:
+    def __init__(self, token_file, log):
+        self.token_file, self.log = token_file, log
+
+    def run_local_server(self, port=0):
+        self.log.append(("consent", self.token_file.exists()))
+        return _NewCreds()
+
+
+class _NewCreds:
+    valid = True
+
+    def to_json(self):
+        return '{"fresh": true}'
+
+
+@pytest.fixture
+def gmail_files(tmp_path, monkeypatch):
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    client = tmp_path / "gmail_client.json"
+    client.write_text("{}", encoding="utf-8")
+    token = tmp_path / "gmail_token.json"
+    log = []
+    monkeypatch.setattr(InstalledAppFlow, "from_client_secrets_file",
+                        classmethod(lambda cls, path, scopes: _FakeFlow(token, log)))
+    return token, client, log
+
+
+def test_expired_refresh_token_falls_back_to_consent(gmail_files, monkeypatch):
+    # Google "Testing" apps: refresh tokens die after 7 days -> RefreshError on every send.
+    from google.auth.exceptions import RefreshError
+    from google.oauth2.credentials import Credentials
+    from meetnotes.mailer import load_gmail_credentials
+    token, client, log = gmail_files
+    token.write_text('{"old": true}', encoding="utf-8")
+
+    class Stale:
+        expired, valid, refresh_token = True, False, "r"
+
+        def refresh(self, request):
+            log.append(("refresh",))
+            raise RefreshError("invalid_grant: Token has been expired or revoked.")
+
+    monkeypatch.setattr(Credentials, "from_authorized_user_file", classmethod(lambda cls, p, s: Stale()))
+    creds = load_gmail_credentials(token, client)
+    assert isinstance(creds, _NewCreds)
+    assert log == [("refresh",), ("consent", False)]  # the dead token was deleted before consent
+    assert token.read_text(encoding="utf-8") == '{"fresh": true}'
+
+
+def test_invalid_token_file_falls_back_to_consent(gmail_files):
+    from meetnotes.mailer import load_gmail_credentials
+    token, client, log = gmail_files
+    token.write_text("not json at all", encoding="utf-8")
+    creds = load_gmail_credentials(token, client)
+    assert isinstance(creds, _NewCreds) and log == [("consent", False)]
+    assert token.read_text(encoding="utf-8") == '{"fresh": true}'
+
+
+def test_valid_refresh_keeps_token_and_skips_consent(gmail_files, monkeypatch):
+    from google.oauth2.credentials import Credentials
+    from meetnotes.mailer import load_gmail_credentials
+    token, client, log = gmail_files
+    token.write_text('{"old": true}', encoding="utf-8")
+
+    class Refreshable:
+        expired, valid, refresh_token = True, False, "r"
+
+        def refresh(self, request):
+            self.valid, self.expired = True, False
+
+        def to_json(self):
+            return '{"refreshed": true}'
+
+    monkeypatch.setattr(Credentials, "from_authorized_user_file", classmethod(lambda cls, p, s: Refreshable()))
+    load_gmail_credentials(token, client)
+    assert log == [] and token.read_text(encoding="utf-8") == '{"refreshed": true}'
