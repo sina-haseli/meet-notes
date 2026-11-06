@@ -6,6 +6,10 @@ const entries = [
   ["src/offscreen.ts", "esm"],
   ["src/popup.ts", "esm"],
   ["src/permission.ts", "esm"],
+  ["src/settings.ts", "esm"],
+  ["src/meeting.ts", "esm"],
+  ["src/meetings.ts", "esm"],
+  ["src/pcmWorklet.ts", "esm"],
   ["src/content/speakerLog.ts", "iife"],
 ];
 
@@ -30,4 +34,10 @@ for (const [file, format] of entries) {
 
 for (const f of readdirSync("src")) {
   if (f.endsWith(".html")) copyFileSync(`src/${f}`, `dist/${f}`);
+}
+
+if (existsSync("src/ui")) {
+  for (const f of readdirSync("src/ui")) {
+    if (f.endsWith(".css")) copyFileSync(`src/ui/${f}`, `dist/${f}`);
+  }
 }
