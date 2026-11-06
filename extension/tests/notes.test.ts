@@ -46,6 +46,13 @@ describe("templates", () => {
   it("noReadGrepGlobInTemplates", () => {
     for (const t of Object.values(TEMPLATES)) expect(t).not.toContain("Read, Grep, Glob");
   });
+  it("neverReplacesSpeakerLabelsWithNames", () => {
+    const rule =
+      "Never replace a `Speaker N` label with a participant name, even if the participants list suggests who it might be. " +
+      "A person section or item for an uncertain speaker uses the `Speaker N` label and is marked (uncertain).";
+    expect(Object.keys(TEMPLATES).sort()).toEqual(["daily", "grooming", "planning", "technical"]);
+    for (const t of Object.values(TEMPLATES)) expect(t).toContain(rule);
+  });
   it("use the new markers", () => {
     for (const t of Object.values(TEMPLATES)) {
       expect(t).toContain("<<<SUMMARY>>>");

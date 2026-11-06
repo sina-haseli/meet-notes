@@ -8,6 +8,7 @@ const RULES = `You turn a transcript of a Google Meet work meeting (spoken Persi
 - use the services context only to correct service/repo/component names to their real names; never add tasks, owners, estimates or decisions not present in the transcript. If there is no services context, write \`?\` for unknown Service/Repo cells
 - unknown values are \`?\`
 - items attributed to uncertain speakers keep the \`(uncertain)\` marker
+- Never replace a \`Speaker N\` label with a participant name, even if the participants list suggests who it might be. A person section or item for an uncertain speaker uses the \`Speaker N\` label and is marked (uncertain).
 - every item cites a \`[MM:SS]\` timestamp
 
 `;
