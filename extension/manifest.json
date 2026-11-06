@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Meet Notes",
   "version": "0.2.0",
+  "minimum_chrome_version": "116",
   "description": "Record Google Meet and get Persian/English meeting notes, summaries and transcripts.",
   "permissions": ["tabCapture", "offscreen", "storage", "unlimitedStorage", "notifications", "downloads", "activeTab"],
   "host_permissions": ["https://openrouter.ai/*"],
