@@ -10,6 +10,11 @@ from meetnotes.transcript import Turn, save_turns
 
 TOKEN = "tok123"
 H = {"X-MeetNotes-Token": TOKEN}
+BASE = "http://127.0.0.1:47821"
+
+
+def make_client(app):
+    return TestClient(app, base_url=BASE)
 
 
 @pytest.fixture
@@ -34,7 +39,7 @@ def client(cfg, calls, sends):
         run_pipeline=lambda folder, c: calls.append(folder.name),
         send=lambda folder, c, recipients: sends.append((folder.name, recipients)),
     )
-    return TestClient(app)
+    return make_client(app)
 
 
 @pytest.fixture
@@ -176,14 +181,14 @@ def test_send_requires_recipients_and_ready(client, ready_meeting, cfg):
 
 
 def test_send_ok_and_failure_502(cfg, ready_meeting, sends):
-    ok = TestClient(create_app(cfg, send=lambda f, c, r: sends.append((f.name, r))))
+    ok = make_client(create_app(cfg, send=lambda f, c, r: sends.append((f.name, r))))
     assert ok.post(f"/api/meetings/{ready_meeting}/send", json={"recipients": ["a@b.c"]},
                    headers=H).status_code == 200
     assert sends == [(ready_meeting, ["a@b.c"])]
 
     def boom(f, c, r):
         raise RuntimeError("gmail down")
-    bad = TestClient(create_app(cfg, send=boom))
+    bad = make_client(create_app(cfg, send=boom))
     r = bad.post(f"/api/meetings/{ready_meeting}/send", json={"recipients": ["a@b.c"]}, headers=H)
     assert r.status_code == 502 and "gmail down" in r.text
 
@@ -215,3 +220,50 @@ def test_pages_inject_token(client, ready_meeting):
     for path in ("/", f"/meetings/{ready_meeting}"):
         r = client.get(path)
         assert r.status_code == 200 and TOKEN in r.text and "__TOKEN__" not in r.text
+
+
+def test_foreign_host_header_rejected(client):
+    # DNS rebinding: a page on evil.example resolving to 127.0.0.1 must not read the token page.
+    r = client.get("/", headers={"Host": "evil.example"})
+    assert r.status_code == 400 and TOKEN not in r.text
+    assert client.get("/api/meetings", headers={**H, "Host": "evil.example:47821"}).status_code == 400
+    assert client.get("/", headers={"Host": "localhost:47821"}).status_code == 200
+    assert client.get("/").status_code == 200
+
+
+def test_startup_marks_interrupted_processing_as_error(cfg):
+    stuck = create_meeting(cfg.notes_root, {"title": "S", "type": "planning"})
+    done = create_meeting(cfg.notes_root, {"title": "D", "type": "planning"})
+    write_meta(done, status="ready")
+    create_app(cfg)
+    meta = read_meta(stuck)
+    assert meta["status"] == "error" and "helper restarted" in meta["error"]
+    assert read_meta(done)["status"] == "ready" and read_meta(done)["error"] is None
+
+
+def test_startup_with_missing_notes_root(tmp_path):
+    create_app(Config(token=TOKEN, notes_root=tmp_path / "does-not-exist"))
+
+
+def test_upload_accepts_json_fields_as_file_parts(client, upload_files, cfg):
+    files, data = upload_files
+    files = files + [("meta", ("meta.json", data["meta"].encode(), "application/json")),
+                     ("speaker_log", ("speaker_log.json", data["speaker_log"].encode(), "application/json"))]
+    r = client.post("/api/meetings", files=files, headers=H)
+    assert r.status_code == 200
+    d = cfg.notes_root / r.json()["id"]
+    assert json.loads((d / "speaker_log.json").read_text(encoding="utf-8"))[0]["name"] == "Reza"
+    assert read_meta(d)["title"] == "Sprint grooming"
+
+
+def test_upload_allows_many_screens_and_large_string_log(client, upload_files, cfg):
+    files, data = upload_files
+    files = files[:1] + [("screens", (f"{i}.jpg", b"j", "image/jpeg")) for i in range(1200)]
+    big_log = [{"name": "Reza", "start_ms": i, "end_ms": i + 1} for i in range(40000)]
+    data["speaker_log"] = json.dumps(big_log)
+    assert len(data["speaker_log"]) > 1024 * 1024
+    r = client.post("/api/meetings", files=files, data=data, headers=H)
+    assert r.status_code == 200, r.text
+    d = cfg.notes_root / r.json()["id"]
+    assert len(list((d / "screens").iterdir())) == 1200
+    assert len(json.loads((d / "speaker_log.json").read_text(encoding="utf-8"))) == 40000

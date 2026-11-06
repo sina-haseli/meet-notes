@@ -82,6 +82,23 @@ def list_meetings(root: Path) -> list[dict]:
     return metas
 
 
+def fail_interrupted(root: Path, error: str) -> list[str]:
+    """Mark every meeting still in "processing" as "error" (used at helper startup)."""
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    failed = []
+    for d in root.iterdir():
+        try:
+            meta = read_meta(d) if (d / "meta.json").is_file() else None
+        except (OSError, ValueError):
+            continue
+        if meta and meta.get("status") == "processing":
+            write_meta(d, status="error", error=error)
+            failed.append(d.name)
+    return failed
+
+
 def meeting_dir(root: Path, id: str) -> Path:
     if not id or "/" in id or "\\" in id or ".." in id:
         raise KeyError(id)

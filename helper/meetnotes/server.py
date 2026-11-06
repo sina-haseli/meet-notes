@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -18,7 +19,7 @@ from .config import Config
 from .mailer import send_meeting
 from .pipeline import process_meeting
 from .speakers import rename_speaker
-from .store import create_meeting, list_meetings, meeting_dir, read_meta, write_meta
+from .store import create_meeting, fail_interrupted, list_meetings, meeting_dir, read_meta, write_meta
 from .transcript import load_turns, render_transcript_md, save_turns
 
 log = logging.getLogger("meetnotes.server")
@@ -26,6 +27,10 @@ log = logging.getLogger("meetnotes.server")
 REVIEW_DIR = Path(__file__).parent / "review"
 MEETING_TYPES = {"grooming", "planning", "technical"}
 SCREEN_NAME = re.compile(r"^\d+\.(jpg|png)$")
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+INTERRUPTED_ERROR = "helper restarted while processing — press Retry"
+MAX_UPLOAD_FILES = 5000
+MAX_FIELD_BYTES = 50 * 1024 * 1024
 
 
 class DocBody(BaseModel):
@@ -45,8 +50,21 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
+async def _form_text(value) -> str | None:
+    """A JSON form field may arrive as a plain string or as a Blob (file) part."""
+    if isinstance(value, UploadFile):
+        return (await value.read()).decode("utf-8")
+    return value if isinstance(value, str) else None
+
+
 def create_app(cfg: Config, run_pipeline=process_meeting, send=send_meeting) -> FastAPI:
+    # Pipelines run in-process; anything still "processing" was cut off by a restart/crash.
+    for mid in fail_interrupted(cfg.notes_root, INTERRUPTED_ERROR):
+        log.warning("meeting %s was processing when the helper stopped; marked as error", mid)
+
     app = FastAPI(title="Meet Notes helper")
+    # Pages embed the token: reject foreign Host headers so DNS rebinding can't read them.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.add_middleware(CORSMiddleware, allow_origin_regex=r"chrome-extension://.*",
                        allow_methods=["*"], allow_headers=["*"])
 
@@ -65,18 +83,21 @@ def create_app(cfg: Config, run_pipeline=process_meeting, send=send_meeting) -> 
 
     @api.post("/meetings")
     async def upload(request: Request, background: BackgroundTasks):
-        form = await request.form()
+        form = await request.form(max_files=MAX_UPLOAD_FILES, max_part_size=MAX_FIELD_BYTES)
         audio = form.get("audio")
         if not isinstance(audio, UploadFile):
             raise HTTPException(400, "audio is required")
         try:
-            meta = json.loads(form.get("meta") or "")
-        except ValueError:
+            meta = json.loads(await _form_text(form.get("meta")) or "")
+        except (ValueError, UnicodeDecodeError):
             raise HTTPException(400, "meta must be valid JSON")
         if not isinstance(meta, dict) or meta.get("type") not in MEETING_TYPES:
             raise HTTPException(400, "meta.type must be grooming, planning or technical")
-        speaker_log = form.get("speaker_log")
-        if not isinstance(speaker_log, str):
+        try:
+            speaker_log = await _form_text(form.get("speaker_log"))
+        except UnicodeDecodeError:
+            speaker_log = None
+        if speaker_log is None:
             speaker_log = "[]"
         folder = create_meeting(cfg.notes_root, meta)
         (folder / "audio.webm").write_bytes(await audio.read())
