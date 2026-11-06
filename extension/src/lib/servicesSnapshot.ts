@@ -3,8 +3,9 @@ import type { Settings } from "./settings";
 export const SERVICES_NOTICE = "Made without your services folder — Allow & Retry";
 
 /** queryPermission is not in TS's DOM lib. */
-interface PermissionQueryable {
+export interface PermissionQueryable {
   queryPermission(desc: { mode: "read" | "readwrite" }): Promise<PermissionState>;
+  requestPermission(desc: { mode: "read" | "readwrite" }): Promise<PermissionState>;
 }
 
 export interface ServicesSnapshot {
