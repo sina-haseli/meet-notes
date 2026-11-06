@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meetings - Meet Notes</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .mn-header { padding-bottom: 58px; }
+    .mn-header .mn-title { font-size: 16px; }
+    .list { margin: -46px 12px 24px; }
+    .list .mn-card { margin: 0; }
+    a.mn-item {
+      margin: 0 0 10px;
+      padding: 12px 14px;
+      border-radius: var(--mn-radius);
+      box-shadow: var(--mn-shadow);
+      text-decoration: none;
+    }
+    a.mn-item:hover { box-shadow: 0 6px 18px rgba(30, 30, 60, 0.14); }
+    a.mn-item .mn-t1 { font-size: 13.5px; }
+    a.mn-item .mn-t2 { font-size: 12px; margin-top: 2px; }
+    .type { flex: none; }
+    .empty { font-size: 13px; color: var(--mn-muted); padding: 6px 2px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <div>
+          <div class="mn-title">Meetings</div>
+          <div class="mn-sub" id="count">Meet Notes</div>
+        </div>
+        <div class="mn-sp"></div>
+        <button class="mn-icon-btn" id="gear" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+    <main class="list" id="list"></main>
+  </div>
+  <script type="module" src="meetings.js"></script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meet Notes settings</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    .wrap { max-width: 560px; margin: 0 auto; }
+    .wrap .mn-card { margin-bottom: 14px; }
+    .wrap .mn-header + .mn-card { margin-top: -42px; }
+    .hd { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+    .field + .field { margin-top: 12px; }
+    .actions { margin-top: 10px; flex-wrap: wrap; }
+    .masked { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+    #keyEdit { margin-top: 8px; }
+    .folder-name { font-weight: 600; word-break: break-all; }
+    .highlight { outline: 3px solid #a78bfa; outline-offset: 2px; animation: mn-glow 1.4s ease-in-out infinite; }
+    @keyframes mn-glow { 50% { outline-color: rgba(167, 139, 250, 0.3); } }
+    details > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+    details[open] > summary { margin-bottom: 8px; }
+    .model-row { display: flex; gap: 8px; align-items: flex-end; }
+    .model-row > div { flex: 1; min-width: 0; }
+    .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .msg { margin-top: 6px; font-size: 11.5px; }
+    .msg:empty { display: none; }
+    .optional { text-transform: none; letter-spacing: 0; color: var(--mn-hint); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <div>
+          <div class="mn-title">Settings</div>
+          <div class="mn-sub">Meet Notes</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="mn-card" id="secKey">
+      <div class="hd">OpenRouter key</div>
+      <div class="mn-row">
+        <span class="masked" id="keyMasked"></span>
+        <div class="mn-sp"></div>
+        <button class="mn-btn-ghost" id="keyChange">Change</button>
+      </div>
+      <div id="keyEdit" hidden>
+        <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" aria-label="OpenRouter API key" />
+        <div class="mn-hint">Create a key at
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.</div>
+      </div>
+      <div id="keyStatus" class="mn-hint msg"></div>
+    </section>
+
+    <section class="mn-card" id="secYou">
+      <div class="hd">About you</div>
+      <div class="field">
+        <label class="mn-label" for="name">Your name</label>
+        <input class="mn-input" id="name" type="text" dir="auto" autocomplete="off" />
+        <div class="mn-hint">Must match exactly how Google Meet shows your name.</div>
+      </div>
+      <div class="field">
+        <div class="mn-label" id="roleLabel">Role</div>
+        <div class="mn-seg" id="roleSeg" role="group" aria-labelledby="roleLabel">
+          <button type="button" data-role="pm">PM / non-technical</button>
+          <button type="button" data-role="technical">Technical</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="mn-card" id="secFolder">
+      <div class="hd">Services folder <span class="optional">· optional</span></div>
+      <div id="folderNone">
+        <button type="button" class="mn-folder" id="chooseFolder">📁 <span>Choose folder…</span></button>
+      </div>
+      <div id="folderSet" hidden>
+        <div class="mn-row">
+          <span>📁</span><span class="folder-name" id="folderName" dir="auto"></span>
+          <div class="mn-sp"></div>
+          <button class="mn-btn-ghost" id="changeFolder">Change…</button>
+          <button class="mn-btn-ghost" id="removeFolder">Remove</button>
+        </div>
+      </div>
+      <div id="folderPerm" class="mn-row actions" hidden>
+        <span class="mn-err-text">Chrome needs permission again →</span>
+        <button class="mn-btn-ghost" id="allowFolder">Allow</button>
+      </div>
+      <div class="mn-hint">Meet Notes reads only folder names, README files and package manifests, to get service names right. They are sent to OpenRouter with the meeting. With the switch below on, it also searches the code.</div>
+      <div id="folderMsg" class="msg mn-err-text"></div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="codeOn" /> Suggest where to change the code</label>
+        <div class="mn-hint">After each grooming, planning or technical meeting, Meet Notes searches your folder's code for words from the meeting and suggests which services the work belongs to. Short snippets around matching lines are sent to OpenRouter with the meeting. Config files contribute only their paths.</div>
+        <div id="codeHint" class="msg mn-hint"></div>
+      </div>
+    </section>
+
+    <section class="mn-card" id="secAdvanced">
+      <details id="advanced">
+        <summary>Advanced</summary>
+
+        <div class="hd">Models</div>
+        <div class="field model-row">
+          <div><label class="mn-label" for="mTranscribe">Transcription</label>
+            <input class="mn-input" id="mTranscribe" type="text" spellcheck="false" autocomplete="off" /></div>
+          <button class="mn-btn-ghost" data-reset="transcribe">Reset</button>
+        </div>
+        <div class="field model-row">
+          <div><label class="mn-label" for="mVision">Screenshots</label>
+            <input class="mn-input" id="mVision" type="text" spellcheck="false" autocomplete="off" /></div>
+          <button class="mn-btn-ghost" data-reset="vision">Reset</button>
+        </div>
+        <div class="field model-row">
+          <div><label class="mn-label" for="mNotes">Notes</label>
+            <input class="mn-input" id="mNotes" type="text" spellcheck="false" autocomplete="off" /></div>
+          <button class="mn-btn-ghost" data-reset="notes">Reset</button>
+        </div>
+
+        <div class="hd" style="margin-top:18px">Local helper</div>
+        <label class="toggle"><input type="checkbox" id="helperOn" /> Use the local helper instead of OpenRouter in the browser</label>
+        <div id="helperMsg" class="msg mn-err-text"></div>
+        <div class="field">
+          <label class="mn-label" for="helperUrl">Helper URL</label>
+          <input class="mn-input" id="helperUrl" type="text" spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="mn-label" for="helperToken">Token</label>
+          <input class="mn-input" id="helperToken" type="password" spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="mn-row actions"><button class="mn-btn-ghost" id="helperConnect">Connect</button></div>
+      </details>
+    </section>
+
+    <section class="mn-card" id="secStorage">
+      <div class="hd">Storage</div>
+      <div class="mn-row">
+        <span id="usage">Using …</span>
+        <div class="mn-sp"></div>
+        <button class="mn-btn-ghost" id="deleteAll">Delete all meetings</button>
+      </div>
+      <div id="storageMsg" class="msg mn-hint"></div>
+    </section>
+  </div>
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

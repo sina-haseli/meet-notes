@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meeting - Meet Notes</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><div class="page">
+<header class="top"><h1 id="title">Loading...</h1><div class="meta" id="meta"></div></header>
+<div id="banner" class="note" hidden></div>
+<div id="main" hidden>
+  <div class="bar">Speakers: <span id="speakers"></span></div>
+  <div class="tabs" role="tablist">
+    <button class="tab on" data-tab="email">Email summary</button>
+    <button class="tab" data-tab="notes">AI notes (.md)</button>
+    <button class="tab" data-tab="transcript">Transcript</button>
+  </div>
+  <div class="pane" id="pane-email"><textarea id="ta-email" class="fa" dir="auto" spellcheck="false"></textarea></div>
+  <div class="pane" id="pane-notes" hidden><textarea id="ta-notes" class="mono" dir="ltr" spellcheck="false"></textarea></div>
+  <div class="pane" id="pane-transcript" hidden></div>
+  <div class="foot">
+    <span id="saved" class="meta"></span>
+    <input id="recipients" type="text" placeholder="recipients, comma-separated" dir="ltr">
+    <button id="send" class="btn">Send email</button>
+    <span id="sendmsg"></span>
+  </div>
+</div>
+</div>
+<script>const TOKEN = "__TOKEN__";</script>
+<script src="/static/app.js"></script>
+</body></html>

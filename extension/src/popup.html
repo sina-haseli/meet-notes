@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meet Notes</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    body { width: 330px; }
+    #setup .mn-card, #main > .mn-card { margin-bottom: 12px; }
+    .actions { margin-top: 16px; }
+    #keyStatus { min-height: 1.4em; margin-top: 6px; }
+    #start { margin-top: 14px; }
+    .rec-view { text-align: center; padding: 6px 0 2px; }
+    .rec-timer { font-size: 34px; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .rec-line { justify-content: center; margin-top: 6px; color: var(--mn-muted); }
+    .rec-title { margin-top: 2px; font-size: 12px; color: var(--mn-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #stop { margin-top: 14px; }
+    .square { width: 10px; height: 10px; border-radius: 2px; background: var(--mn-red); }
+    .indeterminate > span { width: 40%; animation: mn-slide 1.2s ease-in-out infinite; }
+    @keyframes mn-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    #status { min-height: 0; margin-top: 10px; font-size: 12px; word-break: break-word; }
+    #status:empty { display: none; }
+    #status.error { color: var(--mn-err); }
+    .fail-detail { font-size: 12px; color: var(--mn-muted); word-break: break-word; margin-top: 4px; }
+    .int-card .mn-t1 { white-space: normal; }
+    .int-card .actions { margin-top: 10px; }
+    .recent-head { margin: 4px 2px 0; }
+    .recent-head .mn-label { margin: 6px 0 0; }
+    .recent-empty { font-size: 12px; color: var(--mn-muted); padding: 10px 2px 2px; }
+    .optional { text-transform: none; letter-spacing: 0; color: var(--mn-hint); }
+  </style>
+</head>
+<body>
+  <!-- ================= first-time setup ================= -->
+  <div id="setup" hidden>
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <div>
+          <div class="mn-title">Welcome to Meet Notes</div>
+          <div class="mn-sub" id="stepLabel">Step 1 of 3</div>
+        </div>
+      </div>
+      <div class="mn-steps" id="stepBar"><span></span><span></span><span></span></div>
+    </header>
+    <section class="mn-card">
+      <div id="step1">
+        <label class="mn-label" for="key">Your OpenRouter API key</label>
+        <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
+        <div class="mn-hint">Meet Notes uses OpenRouter to write your notes. Create a key at
+          <a id="keysLink" href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>
+          and paste it here.</div>
+        <div id="keyStatus" class="mn-hint"></div>
+        <div class="mn-row actions">
+          <div class="mn-sp"></div>
+          <button class="mn-btn" id="next1" disabled>Next →</button>
+        </div>
+      </div>
+
+      <div id="step2" hidden>
+        <label class="mn-label" for="name">Your name in Google Meet</label>
+        <input class="mn-input" id="name" type="text" dir="auto" autocomplete="off" />
+        <div class="mn-hint">Must match exactly how Google Meet shows your name.</div>
+        <div class="mn-label">I am mostly a…</div>
+        <div class="mn-seg" id="roleSeg">
+          <button type="button" data-role="pm">PM / non-technical</button>
+          <button type="button" data-role="technical">Technical</button>
+        </div>
+        <div class="mn-row actions">
+          <button class="mn-btn-ghost" id="back2">Back</button>
+          <div class="mn-sp"></div>
+          <button class="mn-btn" id="next2" disabled>Next →</button>
+        </div>
+      </div>
+
+      <div id="step3" hidden>
+        <div class="mn-label">Services folder <span class="optional">· optional</span></div>
+        <button type="button" class="mn-folder" id="chooseFolder">📁 <span>Choose folder…</span></button>
+        <div class="mn-hint">Lets notes use your real service names. Meet Notes reads only folder names,
+          README files and package manifests. The folder is chosen in a new tab.</div>
+        <div class="mn-row actions">
+          <button class="mn-btn-ghost" id="back3">Back</button>
+          <div class="mn-sp"></div>
+          <button class="mn-btn" id="skip3">Skip</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= idle / recording ================= -->
+  <div id="main" hidden>
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <div>
+          <div class="mn-title">Meet Notes</div>
+          <div class="mn-sub" id="tabLine">Open a Google Meet tab</div>
+        </div>
+        <div class="mn-sp"></div>
+        <span class="mn-badge" id="helperBadge" hidden>Local helper</span>
+        <button class="mn-icon-btn" id="gear" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+    <section class="mn-card">
+      <div id="idleView">
+        <label class="mn-label" for="title">Meeting title</label>
+        <input class="mn-input" id="title" type="text" dir="auto" autocomplete="off" placeholder="Untitled meeting" />
+        <div class="mn-label">Type</div>
+        <div class="mn-chips" id="chips">
+          <button type="button" class="mn-chip" data-type="grooming">Grooming</button>
+          <button type="button" class="mn-chip" data-type="planning">Planning</button>
+          <button type="button" class="mn-chip" data-type="technical">Technical</button>
+          <button type="button" class="mn-chip" data-type="daily">Daily</button>
+        </div>
+        <button class="mn-btn mn-block" id="start" disabled><span class="mn-dot"></span>Start recording</button>
+      </div>
+
+      <div id="recView" class="rec-view" hidden>
+        <div class="rec-timer" id="timer">00:00</div>
+        <div class="mn-row rec-line"><span class="mn-dot pulse" title="Recording"></span>Recording…</div>
+        <div class="rec-title" id="recTitle" dir="auto"></div>
+        <button class="mn-btn mn-block" id="stop"><span class="square"></span>Stop recording</button>
+      </div>
+
+      <div id="uploadView" hidden>
+        <div class="mn-t1">Uploading to the local helper…</div>
+        <div class="mn-progress indeterminate"><span></span></div>
+      </div>
+
+      <div id="failView" hidden>
+        <div class="mn-t1" style="color: var(--mn-err)">Upload to the local helper failed</div>
+        <div class="fail-detail" id="failDetail"></div>
+        <div class="mn-row actions">
+          <button class="mn-btn" id="retry">Retry</button>
+          <div class="mn-sp"></div>
+          <button class="mn-btn-ghost" id="saveDiscard"
+            title="Saves the recorded audio to your Downloads folder, then drops it so a new meeting can be recorded.">Save audio &amp; discard</button>
+        </div>
+      </div>
+
+      <div id="status"></div>
+    </section>
+
+    <div id="interrupted"></div>
+
+    <div class="mn-body">
+      <div class="mn-row recent-head" id="recentHead" hidden>
+        <div class="mn-label">Recent</div>
+        <div class="mn-sp"></div>
+        <a class="mn-link" id="seeAll" href="#">See all</a>
+      </div>
+      <div id="recent"></div>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
