@@ -10,7 +10,7 @@ Meet Notes is a Chrome extension that records a Google Meet meeting you choose t
 - **Screenshots:** while you record, images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described.
 - **Speaker names:** the names shown on the Meet page, used to label who spoke.
 - **Your OpenRouter API key**, which you enter in setup.
-- **Optional services-folder text:** if you choose a services folder, the extension reads folder names, the start of each README and package manifest names, so notes use the right service names. You choose the folder; the extension reads nothing else on your computer.
+- **Optional services-folder text:** if you choose a services folder, the extension reads folder names, the start of each README and package manifest names, so notes use the right service names. You choose the folder; the extension reads nothing else on your computer. If you turn on “Suggest where to change the code”, short snippets of matching lines from your folder's code (secrets masked; config files only by name) are sent to OpenRouter with the meeting. This runs only when the switch is on, your role is Technical and a folder is chosen, and only for grooming, planning and technical meetings. `.env` files, keys and lockfiles are never read.
 - Your name, role, meeting titles and settings.
 
 ## Where the data goes

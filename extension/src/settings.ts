@@ -6,6 +6,7 @@ import { putHandle, getHandle, deleteHandle, listMeetings, deleteMeeting } from 
 import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { formatBytes } from "./lib/storageUsage";
 import { twoClick } from "./lib/dom";
+import { codeSwitchState } from "./lib/codeSwitch";
 
 const KEY_DEBOUNCE_MS = 600;
 const HELPER_ORIGIN = "http://127.0.0.1:47821/*";
@@ -99,7 +100,20 @@ $<HTMLInputElement>("key").addEventListener("input", (e) => {
 
 // ---------- name & role ----------
 
+function renderCodeSwitch(): void {
+  const st = codeSwitchState(settings, settings.servicesFolderName !== "");
+  const box = $<HTMLInputElement>("codeOn");
+  box.checked = st.checked;
+  box.disabled = st.disabled;
+  $("codeHint").textContent = st.hint ?? "";
+}
+
+$<HTMLInputElement>("codeOn").addEventListener("change", (e) => {
+  void save({ codeSuggestions: (e.target as HTMLInputElement).checked });
+});
+
 function renderRole(): void {
+  renderCodeSwitch();
   $("roleSeg")
     .querySelectorAll<HTMLButtonElement>("button")
     .forEach((b) => b.classList.toggle("on", b.dataset.role === settings.role));
@@ -140,6 +154,7 @@ async function renderFolder(): Promise<void> {
   $("folderName").textContent = settings.servicesFolderName;
   const perm = await folderPermission();
   $("folderPerm").hidden = !(has && perm !== "granted");
+  renderCodeSwitch();
 }
 
 async function chooseFolder(): Promise<void> {

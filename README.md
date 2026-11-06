@@ -8,7 +8,7 @@ Records a Google Meet meeting (Persian speech with English technical terms) and 
 2. Open the extension and follow the 3 setup steps:
    1. **OpenRouter key:** paste your key (get one at openrouter.ai/keys). It shows "Connected" and your remaining credit.
    2. **Your name in Google Meet:** type it exactly as Meet shows it, and choose your role (PM / non-technical, or Technical).
-   3. **Services folder (Technical only):** choose the folder that holds your services, or skip. It is used only so notes use your real service names.
+   3. **Services folder (Technical only):** choose the folder that holds your services, or skip. It is used only so notes use your real service names. Optional switch **Suggest where to change the code** (Settings): after grooming, planning or technical meetings it searches the folder's code and sends short snippets of matching lines (secrets masked; config files by path only) to OpenRouter with the meeting. Off by default.
 3. Open a Google Meet tab, pick the meeting type (Grooming, Planning, Technical or Daily), and press **Start recording**. Press **Stop** when the meeting ends.
 4. A notification says when the notes are ready. Open the meeting to see the Summary, AI notes, Transcript and Screens tabs. Copy the summary, open a Gmail draft, or download everything as a .zip. Nothing is sent or emailed unless you click it.
 
