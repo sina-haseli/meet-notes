@@ -1,4 +1,5 @@
 import type { MeetingRecord } from "../types";
+import type { PcmSlice } from "./audioChunks";
 
 const DB_NAME = "meetnotes";
 const STORES = ["meetings", "pcm", "webm", "screens", "handles"] as const;
@@ -92,9 +93,13 @@ export async function putPcm(id: string, seq: number, pcm: Int16Array): Promise<
   await done(t);
 }
 
-export async function getPcmRange(id: string, fromSeq: number, toSeq: number): Promise<Int16Array[]> {
+/** Stored slices in [fromSeq, toSeq] with their seqs (a slice that failed to save is simply absent). */
+export async function getPcmRange(id: string, fromSeq: number, toSeq: number): Promise<PcmSlice[]> {
   const t = await tx(["pcm"], "readonly");
-  return req(t.objectStore("pcm").getAll(IDBKeyRange.bound([id, fromSeq], [id, toSeq]))) as Promise<Int16Array[]>;
+  const store = t.objectStore("pcm");
+  const range = IDBKeyRange.bound([id, fromSeq], [id, toSeq]);
+  const [keys, values] = await Promise.all([req(store.getAllKeys(range)), req(store.getAll(range))]);
+  return (keys as unknown as [string, number][]).map((k, i) => ({ seq: k[1], pcm: (values as Int16Array[])[i] }));
 }
 
 export async function putWebm(id: string, seq: number, blob: Blob): Promise<void> {

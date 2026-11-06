@@ -58,22 +58,39 @@ export function downmix(channels: Float32Array[]): Float32Array {
   return out;
 }
 
+/** One stored 16 kHz PCM slice and its position (slice `seq` starts at seq * SLICE_SAMPLES). */
+export interface PcmSlice {
+  seq: number;
+  pcm: Int16Array;
+}
+
+/** Timeline position (in samples) just after slice `seq` of length `len`. */
+export function sliceEnd(seq: number, len: number): number {
+  return seq * SLICE_SAMPLES + len;
+}
+
+/**
+ * The chunk's samples, each slice placed at its own seq position. A slice that failed to save is
+ * zero-filled, so later audio keeps its true time (and stays aligned with the speaker log).
+ */
 export async function assembleChunk(
   plan: ChunkPlan,
-  readSlices: (fromSeq: number, toSeq: number) => Promise<Int16Array[]>,
+  readSlices: (fromSeq: number, toSeq: number) => Promise<PcmSlice[]>,
 ): Promise<Int16Array> {
   const startSample = Math.round((plan.offsetMs * PCM_RATE) / 1000);
   const endSample = startSample + Math.round((plan.durationMs * PCM_RATE) / 1000);
   const fromSeq = Math.floor(startSample / SLICE_SAMPLES);
   const toSeq = Math.floor((endSample - 1) / SLICE_SAMPLES);
-  const slices = await readSlices(fromSeq, toSeq);
-  const total = slices.reduce((n, s) => n + s.length, 0);
-  const joined = new Int16Array(total);
-  let pos = 0;
+  const slices = (await readSlices(fromSeq, toSeq)).filter((s) => s.seq >= fromSeq && s.seq <= toSeq);
+  // Ends where the recorded audio ends (the last stored sample), never past the plan.
+  const dataEnd = slices.reduce((n, s) => Math.max(n, sliceEnd(s.seq, s.pcm.length)), 0);
+  const end = Math.min(endSample, dataEnd);
+  const out = new Int16Array(Math.max(0, end - startSample));
   for (const s of slices) {
-    joined.set(s, pos);
-    pos += s.length;
+    const at = s.seq * SLICE_SAMPLES;
+    const from = Math.max(at, startSample);
+    const to = Math.min(at + s.pcm.length, end);
+    if (to > from) out.set(s.pcm.subarray(from - at, to - at), from - startSample);
   }
-  const base = fromSeq * SLICE_SAMPLES;
-  return joined.slice(Math.min(startSample - base, total), Math.min(endSample - base, total));
+  return out;
 }

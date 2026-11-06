@@ -18,8 +18,8 @@ import { CHANGE_THRESHOLD, frameDiff } from "./lib/frameDiff";
 import { SpeakingDetector } from "./lib/speakingDetector";
 import { buildUploadForm, uploadWithRetry } from "./lib/upload";
 import { getHandle, putPcm, putScreen, putWebm, updateMeeting } from "./lib/db";
-import { PCM_RATE } from "./lib/audioChunks";
-import { SliceBuffer } from "./lib/sliceBuffer";
+import { PCM_RATE, sliceEnd } from "./lib/audioChunks";
+import { retryOnce, SliceBuffer } from "./lib/sliceBuffer";
 import { SERVICES_NOTICE, snapshotServices, type ServicesSnapshot } from "./lib/servicesSnapshot";
 import { readServicesContext } from "./lib/servicesContext";
 import type { Settings } from "./lib/settings";
@@ -42,7 +42,7 @@ interface Persist {
   meetingId: string;
   worklet: AudioWorkletNode;
   slices: SliceBuffer;
-  /** 16 kHz samples written to IndexedDB so far. */
+  /** Timeline end, in 16 kHz samples, of the slices written to IndexedDB so far. */
   pcmSamples: number;
   webmSeq: number;
   /** Serial chain of WebM/screen writes. */
@@ -123,12 +123,11 @@ async function startRecording(streamId: string, selfName: string, meetingId: str
     if (meetingId !== null) {
       // 16 kHz PCM tap. R6: routed to the destination through a muted gain, so the graph always
       // pulls it (no reliance on auto-pull of zero-output nodes) and it adds nothing audible.
+      // Its inputs are connected only at t0 (below), so PCM sample 0 is t0 like everything else.
       await ctx.audioWorklet.addModule(chrome.runtime.getURL(WORKLET_PATH));
       const worklet = new AudioWorkletNode(ctx, "pcm-capture", { numberOfInputs: 1, numberOfOutputs: 1 });
       const mute = ctx.createGain();
       mute.gain.value = 0;
-      micSrc.connect(worklet);
-      tabSrc.connect(worklet);
       worklet.connect(mute);
       mute.connect(ctx.destination);
       const p: Persist = {
@@ -138,8 +137,9 @@ async function startRecording(streamId: string, selfName: string, meetingId: str
         webmSeq: 0,
         writes: Promise.resolve(),
         slices: new SliceBuffer(async (seq, pcm) => {
-          await putPcm(meetingId, seq, pcm);
-          p.pcmSamples += pcm.length;
+          // Tried twice; a slice still missing is zero-filled at assembly, keeping later audio in place.
+          await retryOnce(() => putPcm(meetingId, seq, pcm));
+          p.pcmSamples = Math.max(p.pcmSamples, sliceEnd(seq, pcm.length));
           await updateMeeting(meetingId, { pcmSamples: p.pcmSamples });
         }),
       };
@@ -170,8 +170,14 @@ async function startRecording(streamId: string, selfName: string, meetingId: str
     video.srcObject = new MediaStream(tab.getVideoTracks());
     await video.play().catch(() => undefined);
 
-    recorder.start(TIMESLICE_MS);
+    // One shared zero for PCM, WebM, screens and the speaker log: t0 is taken, then the PCM tap and
+    // the recorder start straight away with nothing awaited in between.
     const t0 = Date.now();
+    if (persist) {
+      micSrc.connect(persist.worklet);
+      tabSrc.connect(persist.worklet);
+    }
+    recorder.start(TIMESLICE_MS);
 
     const r: Recording = {
       t0,

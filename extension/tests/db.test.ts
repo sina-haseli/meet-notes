@@ -30,7 +30,8 @@ describe("db", () => {
   it("pcmRangeAndWebmConcat", async () => {
     for (let i = 1; i <= 4; i++) await putPcm("p", i, new Int16Array([i, i]));
     const r = await getPcmRange("p", 2, 3);
-    expect(r.map((a) => a[0])).toEqual([2, 3]);
+    expect(r.map((a) => a.pcm[0])).toEqual([2, 3]);
+    expect(r.map((a) => a.seq)).toEqual([2, 3]);
     await putWebm("p", 2, new Blob([new Uint8Array(5)]));
     await putWebm("p", 1, new Blob([new Uint8Array(3)]));
     await putWebm("q", 1, new Blob([new Uint8Array(9)]));
@@ -40,6 +41,13 @@ describe("db", () => {
     await putScreen("p", 500, new Blob(["b"]));
     await putScreen("p", 100, new Blob(["a"]));
     expect((await listScreens("p")).map((s) => s.atMs)).toEqual([100, 500]);
+  });
+  it("pcmRangeKeepsSeqsAcrossGaps", async () => {
+    await putPcm("g", 0, new Int16Array([10]));
+    await putPcm("g", 2, new Int16Array([30]));
+    const r = await getPcmRange("g", 0, 5);
+    expect(r.map((a) => [a.seq, a.pcm[0]])).toEqual([[0, 10], [2, 30]]);
+    expect(r[1].pcm).toBeInstanceOf(Int16Array);
   });
   it("deleteMeetingRemovesAllRows", async () => {
     await putMeeting(rec("d"));

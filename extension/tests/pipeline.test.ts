@@ -29,7 +29,7 @@ function setup(over: Partial<MeetingRecord> = {}, o: {
       getMeeting: async () => structuredClone(r),
       updateMeeting: async (_id: string, patch: Partial<MeetingRecord>) => { r = { ...r, ...patch }; return structuredClone(r); },
       getPcmRange: async (_id: string, from: number, to: number) =>
-        Array.from({ length: to - from + 1 }, () => new Int16Array(160000)),
+        Array.from({ length: to - from + 1 }, (_, i) => ({ seq: from + i, pcm: new Int16Array(160000) })),
       listScreens: async () => screens,
     } as any,
     settings: async () => ({ openrouterKey: key(), models: { transcribe: "mt", vision: "mv", notes: "mn" } } as Settings),

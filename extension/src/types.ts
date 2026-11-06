@@ -44,7 +44,7 @@ export interface MeetingRecord {
   turns?: Turn[];                   // merged + speaker-mapped
   screens?: ScreenDesc[];
   summaryMd?: string; notesMd?: string;
-  pcmSamples: number;               // total 16 kHz samples persisted
+  pcmSamples: number;               // timeline end of the persisted 16 kHz samples
   readyAt?: number; audioDeleted?: boolean;
   helperId?: string;                // helper-mode stub only
   createdAt: number;

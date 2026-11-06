@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SliceBuffer } from "../src/lib/sliceBuffer";
+import { retryOnce, SliceBuffer } from "../src/lib/sliceBuffer";
 import { SERVICES_NOTICE, savedMeetingServices, snapshotServices } from "../src/lib/servicesSnapshot";
 import { isOffscreenIdle, type OffscreenActivity } from "../src/lib/offscreenIdle";
 import type { Settings } from "../src/lib/settings";
@@ -159,5 +159,36 @@ describe("savedMeetingServices", () => {
       throw new Error("db closed");
     });
     expect(out).toEqual({ servicesContext: null, servicesNotice: SERVICES_NOTICE });
+  });
+});
+
+describe("retryOnce", () => {
+  it("aFailedSliceWriteIsTriedOnceMore", async () => {
+    let calls = 0;
+    await retryOnce(async () => {
+      calls++;
+      if (calls === 1) throw new Error("transient");
+    });
+    expect(calls).toBe(2);
+  });
+
+  it("aSecondFailureIsReported", async () => {
+    let calls = 0;
+    const second = new Error("still failing");
+    await expect(
+      retryOnce(async () => {
+        calls++;
+        throw calls === 1 ? new Error("first") : second;
+      }),
+    ).rejects.toBe(second);
+    expect(calls).toBe(2);
+  });
+
+  it("aSuccessfulWriteRunsOnce", async () => {
+    let calls = 0;
+    await retryOnce(async () => {
+      calls++;
+    });
+    expect(calls).toBe(1);
   });
 });

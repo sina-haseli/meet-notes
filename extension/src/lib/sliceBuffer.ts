@@ -64,3 +64,13 @@ export class SliceBuffer {
       });
   }
 }
+
+/** Runs `write`, and once more if it fails (a transient IndexedDB error must not leave a gap). */
+export async function retryOnce(write: () => Promise<void>): Promise<void> {
+  try {
+    await write();
+  } catch (e) {
+    console.warn("write failed, trying once more", e);
+    await write();
+  }
+}
