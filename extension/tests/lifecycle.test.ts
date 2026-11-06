@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { MeetingRecord, MeetingStatus } from "../src/types";
 import {
+  failedRunPatch,
   helperUploadUrl,
+  isStuck,
   meetingPageOpen,
+  shouldResumeOnPoll,
+  STUCK_ERROR,
   recordsInterrupted,
   recordsToResume,
   shouldCloseOffscreen,
@@ -103,5 +107,44 @@ describe("helperUploadUrl", () => {
   it("emptyUrlFallsBackToTheDefault", () => {
     expect(helperUploadUrl("")).toBe(UPLOAD_URL);
     expect(helperUploadUrl("  ")).toBe(UPLOAD_URL);
+  });
+});
+
+describe("isStuck", () => {
+  it("queuedOrProcessingWithoutOffscreenIsStuck", () => {
+    expect(isStuck(rec("a", "processing", 1), false)).toBe(true);
+    expect(isStuck(rec("a", "queued", 1), false)).toBe(true);
+  });
+
+  it("liveOffscreenOrOtherStatusesAreNotStuck", () => {
+    expect(isStuck(rec("a", "processing", 1), true)).toBe(false);
+    expect(isStuck(rec("a", "queued", 1), true)).toBe(false);
+    for (const st of ["recording", "interrupted", "ready", "error"] as const) {
+      expect(isStuck(rec("a", st, 1), false)).toBe(false);
+    }
+    expect(isStuck(rec("h", "processing", 1, "helper"), false)).toBe(false);
+  });
+});
+
+describe("failedRunPatch", () => {
+  it("aFailedRunLeftProcessingBecomesAnError", () => {
+    expect(failedRunPatch(rec("a", "processing", 1), false)).toEqual({ status: "error", error: STUCK_ERROR });
+    expect(STUCK_ERROR).toBe("Something went wrong while processing. Press Retry.");
+  });
+
+  it("leavesSavedErrorsAndSuccessfulRunsAlone", () => {
+    expect(failedRunPatch(rec("a", "error", 1), false)).toBeNull();
+    expect(failedRunPatch(rec("a", "ready", 1), false)).toBeNull();
+    expect(failedRunPatch(rec("a", "processing", 1), true)).toBeNull();
+    expect(failedRunPatch(undefined, false)).toBeNull();
+  });
+});
+
+describe("shouldResumeOnPoll", () => {
+  it("resumesOnlyWhenRowsWaitAndNoOffscreenRuns", () => {
+    const all = [rec("r", "ready", 1), rec("q", "queued", 2)];
+    expect(shouldResumeOnPoll(all, false)).toBe(true);
+    expect(shouldResumeOnPoll(all, true)).toBe(false);
+    expect(shouldResumeOnPoll([rec("r", "ready", 1), rec("e", "error", 2)], false)).toBe(false);
   });
 });

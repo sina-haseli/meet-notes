@@ -23,6 +23,34 @@ export function recordsToResume(all: MeetingRecord[]): string[] {
     .map((r) => r.id);
 }
 
+/** Shown when a run ended without saving its own error (e.g. the offscreen document died). */
+export const STUCK_ERROR = "Something went wrong while processing. Press Retry.";
+
+/**
+ * A built-in meeting marked queued/processing while no offscreen document exists: nothing is
+ * working on it, so it may be retried or deleted like a failed one.
+ */
+export function isStuck(rec: Pick<MeetingRecord, "mode" | "status">, offscreenAlive: boolean): boolean {
+  return rec.mode === "builtin" && !offscreenAlive && (rec.status === "queued" || rec.status === "processing");
+}
+
+/**
+ * The offscreen doc reported a failed run but the record still says `processing` (the pipeline
+ * could not save its error): make it a normal failed meeting with Retry. Null = nothing to change.
+ */
+export function failedRunPatch(
+  rec: Pick<MeetingRecord, "status"> | undefined,
+  ok: boolean,
+): Pick<MeetingRecord, "status" | "error"> | null {
+  if (ok || rec?.status !== "processing") return null;
+  return { status: "error", error: STUCK_ERROR };
+}
+
+/** A popup poll found work waiting with no offscreen document to do it: resume the queue. */
+export function shouldResumeOnPoll(all: MeetingRecord[], offscreenAlive: boolean): boolean {
+  return all.some((r) => isStuck(r, offscreenAlive));
+}
+
 /** Built-in meetings still marked `recording` that are not the live recording. */
 export function recordsInterrupted(all: MeetingRecord[], recordingId: string | undefined): string[] {
   return all

@@ -25,6 +25,7 @@ import { getSettings, type Settings } from "./lib/settings";
 import { meetingId } from "./lib/slug";
 import {
   deleteMeeting,
+  getHandle,
   getMeeting,
   listMeetings,
   pruneExpiredAudio,
@@ -32,16 +33,27 @@ import {
   updateMeeting,
 } from "./lib/db";
 import {
+  failedRunPatch,
   helperUploadUrl,
+  isStuck,
   meetingPageOpen,
   recordsInterrupted,
   recordsToResume,
   shouldCloseOffscreen,
+  shouldResumeOnPoll,
+  STUCK_ERROR,
 } from "./lib/lifecycle";
+import { savedMeetingServices } from "./lib/servicesSnapshot";
 
 const COLLECT_TIMEOUT_MS = 3000;
 const NOTIFY_PREFIX = "meeting:";
-const NOTIFY_ICON = "icons/128.png";
+/** Popup polls resume a stranded queue at most this often. */
+const POLL_RESUME_EVERY_MS = 15_000;
+
+/** Absolute, so it resolves from dist/background.js too. */
+function notifyIcon(): string {
+  return chrome.runtime.getURL("icons/128.png");
+}
 
 interface Session {
   state: RecState;
@@ -550,14 +562,23 @@ async function processed(msg: Extract<FromOffscreen, { type: "processed" }>): Pr
   } catch {
     rec = undefined;
   }
+  // A failed run that could not save its error would stay `processing` with no way out.
+  const patch = failedRunPatch(rec, msg.ok);
+  if (rec && patch) {
+    try {
+      rec = await updateMeeting(rec.id, patch);
+    } catch (e) {
+      console.warn("could not mark the meeting as failed", e);
+    }
+  }
   if (rec && !(await meetingTabOpen(rec.id))) {
     const options: chrome.notifications.NotificationCreateOptions = msg.ok
-      ? { type: "basic", iconUrl: NOTIFY_ICON, title: "Notes ready", message: rec.title || "Your meeting" }
+      ? { type: "basic", iconUrl: notifyIcon(), title: "Notes ready", message: rec.title || "Your meeting" }
       : {
           type: "basic",
-          iconUrl: NOTIFY_ICON,
+          iconUrl: notifyIcon(),
           title: "Processing failed",
-          message: rec.error || "Something went wrong while processing. Press Retry.",
+          message: rec.error || STUCK_ERROR,
         };
     try {
       await chrome.notifications.create(`${NOTIFY_PREFIX}${rec.id}`, options);
@@ -565,7 +586,17 @@ async function processed(msg: Extract<FromOffscreen, { type: "processed" }>): Pr
       console.warn("could not show a notification", e);
     }
   }
+  await pruneAudio();
   await closeIfIdle();
+}
+
+/** The 30-day audio deletion for ready meetings (startup, install and after each run). */
+async function pruneAudio(): Promise<void> {
+  try {
+    await pruneExpiredAudio(Date.now());
+  } catch (e) {
+    console.warn("could not delete expired audio", e);
+  }
 }
 
 // Meetings already re-sent after an idle report in this worker's life (so a meeting whose status
@@ -587,8 +618,18 @@ async function processSaved(id: string): Promise<Ack> {
   const rec = await getMeeting(id);
   if (!rec || rec.mode !== "builtin") return { ok: false, error: "This meeting was not found." };
   if (rec.status !== "interrupted") return { ok: false, error: "This meeting is not waiting to be processed." };
+  // No snapshot was taken at Stop. The folder can't be read here without a user gesture, so a
+  // technical user with a saved folder gets the notice (Allow & Retry on the meeting page).
+  let services: Partial<MeetingRecord> = {};
+  if (rec.servicesContext === null && !rec.servicesNotice) {
+    try {
+      services = await savedMeetingServices(await getSettings(), getHandle);
+    } catch (e) {
+      console.warn("could not check the services folder", e);
+    }
+  }
   // 16 kHz PCM: 16 samples per millisecond.
-  await updateMeeting(id, { durationMs: Math.round(rec.pcmSamples / 16), status: "queued" });
+  await updateMeeting(id, { ...services, durationMs: Math.round(rec.pcmSamples / 16), status: "queued" });
   const res = await sendProcess(id);
   if (!res.ok) await updateMeeting(id, { status: "interrupted" }).catch(() => undefined);
   return res;
@@ -597,9 +638,11 @@ async function processSaved(id: string): Promise<Ack> {
 async function retryMeeting(id: string): Promise<Ack> {
   const rec = await getMeeting(id);
   if (!rec || rec.mode !== "builtin") return { ok: false, error: "This meeting was not found." };
-  // A ready meeting whose notes were cleared (Allow & Retry on the services notice) is re-run too.
+  // A ready meeting whose notes were cleared (Allow & Retry on the services notice) is re-run too,
+  // and so is one left queued/processing with no offscreen document working on it.
   const rerun = rec.status === "ready" && !rec.notesMd;
-  if (rec.status !== "error" && !rerun) return { ok: false, error: "This meeting has not failed." };
+  const stuck = isStuck(rec, await hasOffscreen());
+  if (rec.status !== "error" && !rerun && !stuck) return { ok: false, error: "This meeting has not failed." };
   await updateMeeting(id, { status: "queued" });
   nudged.delete(id);
   const res = await sendProcess(id);
@@ -610,7 +653,7 @@ async function retryMeeting(id: string): Promise<Ack> {
 async function removeMeeting(id: string): Promise<Ack> {
   const rec = await getMeeting(id);
   if (rec?.status === "recording") return { ok: false, error: "Stop the recording before deleting it." };
-  if (rec?.status === "processing") {
+  if (rec?.status === "processing" && !isStuck(rec, await hasOffscreen())) {
     return { ok: false, error: "This meeting is being processed. Delete it when it's done." };
   }
   await deleteMeeting(id);
@@ -627,7 +670,29 @@ async function status(): Promise<StatusResponse> {
   if (s.error) out.error = s.error;
   if (s.notice) out.notice = s.notice;
   if (s.meetingId) out.meetingId = s.meetingId;
+  resumeIfStranded();
   return out;
+}
+
+let lastPollResume = 0;
+
+/**
+ * Popup poll: meetings queued/processing with no offscreen document (it died mid-run) are sent
+ * again, without waiting for a browser restart. Throttled, and serial with every other action.
+ */
+function resumeIfStranded(): void {
+  const now = Date.now();
+  if (now - lastPollResume < POLL_RESUME_EVERY_MS) return;
+  lastPollResume = now;
+  serial(async () => {
+    let all: MeetingRecord[];
+    try {
+      all = await listMeetings();
+    } catch {
+      return;
+    }
+    if (shouldResumeOnPoll(all, await hasOffscreen())) await resumeQueue();
+  }).catch(() => undefined);
 }
 
 // ---------- startup ----------
@@ -643,11 +708,7 @@ async function startupTasks(): Promise<void> {
   } catch (e) {
     console.warn("could not mark interrupted recordings", e);
   }
-  try {
-    await pruneExpiredAudio(Date.now());
-  } catch (e) {
-    console.warn("could not delete expired audio", e);
-  }
+  await pruneAudio();
   await resumeQueue();
 }
 

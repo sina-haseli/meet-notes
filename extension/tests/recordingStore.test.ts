@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SliceBuffer } from "../src/lib/sliceBuffer";
-import { SERVICES_NOTICE, snapshotServices } from "../src/lib/servicesSnapshot";
+import { SERVICES_NOTICE, savedMeetingServices, snapshotServices } from "../src/lib/servicesSnapshot";
 import { isOffscreenIdle, type OffscreenActivity } from "../src/lib/offscreenIdle";
 import type { Settings } from "../src/lib/settings";
 
@@ -133,5 +133,31 @@ describe("snapshotServices", () => {
   it("snapshotNoFolderNoNotice", async () => {
     const out = await snapshotServices(settings("technical"), async () => undefined, async () => "x");
     expect(out).toEqual({ servicesContext: null });
+  });
+});
+
+describe("savedMeetingServices", () => {
+  it("technicalWithAFolderGetsTheNotice", async () => {
+    const out = await savedMeetingServices(settings("technical"), async () => fakeHandle("granted"));
+    expect(out).toEqual({ servicesContext: null, servicesNotice: SERVICES_NOTICE });
+  });
+
+  it("noFolderOrPmGetsNoNotice", async () => {
+    expect(await savedMeetingServices(settings("technical"), async () => undefined)).toEqual({ servicesContext: null });
+    let asked = false;
+    const out = await savedMeetingServices(settings("pm"), async () => {
+      asked = true;
+      return fakeHandle("granted");
+    });
+    expect(asked).toBe(false);
+    expect(out).toEqual({ servicesContext: null });
+  });
+
+  it("anUnreadableHandleStoreStillGivesTheNotice", async () => {
+    // The folder may be set; without being able to tell, the honest outcome is the notice.
+    const out = await savedMeetingServices(settings("technical"), async () => {
+      throw new Error("db closed");
+    });
+    expect(out).toEqual({ servicesContext: null, servicesNotice: SERVICES_NOTICE });
   });
 });
