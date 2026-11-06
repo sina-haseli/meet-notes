@@ -5,7 +5,14 @@
 // - Built-in mode (persist true): 16 kHz PCM slices, WebM chunks and screens are written to
 //   IndexedDB as they arrive (crash-safe), and finished meetings are processed here one at a time.
 import type { Screen, SpeakerInterval, UploadMeta } from "./types";
-import type { Ack, ExportAudioAck, FromOffscreen, OffscreenStartAck, ToOffscreen } from "./messages";
+import type {
+  Ack,
+  ExportAudioAck,
+  FromOffscreen,
+  GetSettingsReply,
+  OffscreenStartAck,
+  ToOffscreen,
+} from "./messages";
 import { UPLOAD_URL } from "./messages";
 import { CHANGE_THRESHOLD, frameDiff } from "./lib/frameDiff";
 import { SpeakingDetector } from "./lib/speakingDetector";
@@ -13,10 +20,11 @@ import { buildUploadForm, uploadWithRetry } from "./lib/upload";
 import { getHandle, putPcm, putScreen, putWebm, updateMeeting } from "./lib/db";
 import { PCM_RATE } from "./lib/audioChunks";
 import { SliceBuffer } from "./lib/sliceBuffer";
-import { snapshotServices, type ServicesSnapshot } from "./lib/servicesSnapshot";
+import { SERVICES_NOTICE, snapshotServices, type ServicesSnapshot } from "./lib/servicesSnapshot";
 import { readServicesContext } from "./lib/servicesContext";
-import { getSettings } from "./lib/settings";
+import type { Settings } from "./lib/settings";
 import { defaultPipelineDeps, processMeeting } from "./lib/pipeline";
+import { isOffscreenIdle } from "./lib/offscreenIdle";
 
 const THUMB_W = 64;
 const THUMB_H = 36;
@@ -74,6 +82,8 @@ let exportUrl: string | null = null;
 /** Built-in processing queue: FIFO, one meeting at a time. */
 const queue: string[] = [];
 let processingId: string | null = null;
+/** Stop handlers (built-in or helper) still flushing/persisting; the doc must not be closed meanwhile. */
+let stopsInFlight = 0;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -111,11 +121,16 @@ async function startRecording(streamId: string, selfName: string, meetingId: str
 
     let persist: Persist | null = null;
     if (meetingId !== null) {
-      // 16 kHz PCM tap. Not connected to the destination: a node without outputs is still pulled.
+      // 16 kHz PCM tap. R6: routed to the destination through a muted gain, so the graph always
+      // pulls it (no reliance on auto-pull of zero-output nodes) and it adds nothing audible.
       await ctx.audioWorklet.addModule(chrome.runtime.getURL(WORKLET_PATH));
-      const worklet = new AudioWorkletNode(ctx, "pcm-capture", { numberOfInputs: 1, numberOfOutputs: 0 });
+      const worklet = new AudioWorkletNode(ctx, "pcm-capture", { numberOfInputs: 1, numberOfOutputs: 1 });
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
       micSrc.connect(worklet);
       tabSrc.connect(worklet);
+      worklet.connect(mute);
+      mute.connect(ctx.destination);
       const p: Persist = {
         meetingId,
         worklet,
@@ -276,18 +291,24 @@ function persistWrite(p: Persist, write: () => Promise<void>): void {
   p.writes = p.writes.then(write).catch((e) => console.warn("could not save recording data", e));
 }
 
-/** Asks the worklet for its partial batch; resolves once that is in the SliceBuffer (or on timeout). */
+/**
+ * Asks the worklet for its partial batch; resolves once that is in the SliceBuffer (or on timeout).
+ * The port is detached afterwards, so batches arriving late are not counted.
+ */
 function flushWorklet(p: Persist): Promise<void> {
-  return new Promise((resolve) => {
+  const port = p.worklet.port;
+  return new Promise<void>((resolve) => {
     const timer = window.setTimeout(resolve, WORKLET_FLUSH_MS);
-    p.worklet.port.onmessage = (e: MessageEvent) => {
+    port.onmessage = (e: MessageEvent) => {
       if (e.data instanceof Int16Array) p.slices.push(e.data);
       else if (e.data === "flushed") {
         clearTimeout(timer);
         resolve();
       }
     };
-    p.worklet.port.postMessage("flush");
+    port.postMessage("flush");
+  }).finally(() => {
+    port.onmessage = null;
   });
 }
 
@@ -324,12 +345,33 @@ async function stopPersisted(r: Recording, p: Persist): Promise<SpeakerInterval[
   }
 }
 
+/**
+ * R5: offscreen documents have no chrome.storage, so Settings come from the background, fresh on
+ * every call (never cached).
+ */
+async function fetchSettings(): Promise<Settings> {
+  const ask: FromOffscreen = { target: "background", type: "get-settings" };
+  const reply = (await chrome.runtime.sendMessage(ask)) as GetSettingsReply | undefined;
+  if (
+    !reply ||
+    typeof reply !== "object" ||
+    typeof reply.role !== "string" ||
+    typeof reply.openrouterKey !== "string" ||
+    !reply.models ||
+    typeof reply.models !== "object"
+  ) {
+    throw new Error("Could not read your settings.");
+  }
+  return reply;
+}
+
 async function takeServicesSnapshot(): Promise<ServicesSnapshot> {
   try {
-    return await snapshotServices(await getSettings(), getHandle, readServicesContext);
+    return await snapshotServices(await fetchSettings(), getHandle, readServicesContext);
   } catch (e) {
+    // Settings or folder unavailable: make the notes without it, and say so.
     console.warn("services snapshot failed", e);
-    return { servicesContext: null };
+    return { servicesContext: null, servicesNotice: SERVICES_NOTICE };
   }
 }
 
@@ -373,7 +415,7 @@ async function drain(): Promise<void> {
     let ok = false;
     try {
       // Fresh deps (and settings) per run, so a Retry after fixing Settings uses the new values.
-      ok = (await processMeeting(id, defaultPipelineDeps())).status === "ready";
+      ok = (await processMeeting(id, defaultPipelineDeps(fetchSettings))).status === "ready";
     } catch (e) {
       console.warn("processing failed", e); // processMeeting should never throw
     } finally {
@@ -385,8 +427,14 @@ async function drain(): Promise<void> {
 }
 
 function reportIfIdle(): void {
-  if (rec || processingId !== null || queue.length > 0 || pending || uploading) return;
-  report({ target: "background", type: "offscreen-idle" });
+  const idle = isOffscreenIdle({
+    recording: rec !== null,
+    stopping: stopsInFlight > 0,
+    processing: processingId !== null,
+    queued: queue.length,
+    helperPending: pending !== null || uploading,
+  });
+  if (idle) report({ target: "background", type: "offscreen-idle" });
 }
 
 // ---------- routing ----------
@@ -406,36 +454,8 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
         return { ok: false, error: `Could not start capture: ${errText(e)}` };
       }
     }
-    case "stop": {
-      const r = rec;
-      if (!r) return { ok: false, kept: pending !== null, error: "Not recording." };
-      // A built-in recording is never handed to the upload path; it keeps running until stop-builtin.
-      if (r.persist) return { ok: false, kept: true, error: "The recording didn't stop. Press Stop again." };
-      rec = null;
-      try {
-        const { audio, selfLog, screens } = await stopRecording(r);
-        pending = { meta: msg.meta, log: mergeLogs(msg.log, selfLog), audio, screens };
-      } catch (e) {
-        // Salvage whatever audio was recorded so it can still be uploaded.
-        if (r.chunks.length === 0) {
-          return { ok: false, kept: false, error: `Could not stop the recorder: ${errText(e)}` };
-        }
-        let selfLog: SpeakerInterval[] = [];
-        try {
-          selfLog = r.detector.finish(Date.now() - r.t0);
-        } catch {
-          // keep the content-script log only
-        }
-        pending = {
-          meta: msg.meta,
-          log: mergeLogs(msg.log, selfLog),
-          audio: new Blob(r.chunks, { type: "audio/webm" }),
-          screens: r.screens,
-        };
-      }
-      void upload(msg.token);
-      return { ok: true };
-    }
+    case "stop":
+      return withStop(() => stopHelper(msg));
     case "retry-upload": {
       if (!pending) return { ok: false, kept: false, error: "The recording is no longer in memory." };
       if (uploading) return { ok: true };
@@ -449,36 +469,83 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
       exportUrl ??= URL.createObjectURL(pending.audio);
       return { ok: true, url: exportUrl };
     }
-    case "stop-builtin": {
-      const r = rec;
-      const p = r?.persist;
-      if (!r || !p || p.meetingId !== msg.meetingId) return { ok: false, error: "Not recording." };
-      rec = null;
-      const selfLog = await stopPersisted(r, p);
-      const snap = await takeServicesSnapshot();
-      try {
-        await updateMeeting(p.meetingId, {
-          speakerLog: mergeLogs(msg.log, selfLog),
-          participants: msg.participants,
-          pcmSamples: p.pcmSamples,
-          durationMs: Math.round(p.pcmSamples / (PCM_RATE / 1000)),
-          servicesContext: snap.servicesContext,
-          servicesNotice: snap.servicesNotice,
-          status: "queued",
-        });
-      } catch (e) {
-        // The audio is already in IndexedDB; only the final record update failed.
-        reportIfIdle();
-        return { ok: false, error: `Could not save the meeting: ${errText(e)}` };
-      }
-      enqueue(p.meetingId);
-      return { ok: true };
-    }
+    case "stop-builtin":
+      return withStop(() => stopBuiltin(msg));
     case "process": {
       enqueue(msg.meetingId);
       return { ok: true };
     }
   }
+}
+
+/**
+ * Runs a stop handler while counting it as in flight, so `offscreen-idle` is never reported while
+ * the final chunks are still being flushed or persisted (`rec` is already null by then).
+ */
+async function withStop(fn: () => Promise<Ack>): Promise<Ack> {
+  stopsInFlight++;
+  try {
+    return await fn();
+  } finally {
+    stopsInFlight--;
+    reportIfIdle();
+  }
+}
+
+async function stopHelper(msg: Extract<ToOffscreen, { type: "stop" }>): Promise<Ack> {
+  const r = rec;
+  if (!r) return { ok: false, kept: pending !== null, error: "Not recording." };
+  // A built-in recording is never handed to the upload path; it keeps running until stop-builtin.
+  if (r.persist) return { ok: false, kept: true, error: "The recording didn't stop. Press Stop again." };
+  rec = null;
+  try {
+    const { audio, selfLog, screens } = await stopRecording(r);
+    pending = { meta: msg.meta, log: mergeLogs(msg.log, selfLog), audio, screens };
+  } catch (e) {
+    // Salvage whatever audio was recorded so it can still be uploaded.
+    if (r.chunks.length === 0) {
+      return { ok: false, kept: false, error: `Could not stop the recorder: ${errText(e)}` };
+    }
+    let selfLog: SpeakerInterval[] = [];
+    try {
+      selfLog = r.detector.finish(Date.now() - r.t0);
+    } catch {
+      // keep the content-script log only
+    }
+    pending = {
+      meta: msg.meta,
+      log: mergeLogs(msg.log, selfLog),
+      audio: new Blob(r.chunks, { type: "audio/webm" }),
+      screens: r.screens,
+    };
+  }
+  void upload(msg.token);
+  return { ok: true };
+}
+
+async function stopBuiltin(msg: Extract<ToOffscreen, { type: "stop-builtin" }>): Promise<Ack> {
+  const r = rec;
+  const p = r?.persist;
+  if (!r || !p || p.meetingId !== msg.meetingId) return { ok: false, error: "Not recording." };
+  rec = null;
+  const selfLog = await stopPersisted(r, p);
+  const snap = await takeServicesSnapshot();
+  try {
+    await updateMeeting(p.meetingId, {
+      speakerLog: mergeLogs(msg.log, selfLog),
+      participants: msg.participants,
+      pcmSamples: p.pcmSamples,
+      durationMs: Math.round(p.pcmSamples / (PCM_RATE / 1000)),
+      servicesContext: snap.servicesContext,
+      servicesNotice: snap.servicesNotice,
+      status: "queued",
+    });
+  } catch (e) {
+    // The audio is already in IndexedDB; only the final record update failed.
+    return { ok: false, error: `Could not save the meeting: ${errText(e)}` };
+  }
+  enqueue(p.meetingId);
+  return { ok: true };
 }
 
 function mergeLogs(a: SpeakerInterval[], b: SpeakerInterval[]): SpeakerInterval[] {

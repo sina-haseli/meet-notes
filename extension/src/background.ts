@@ -17,6 +17,7 @@ import { OFFSCREEN_PATH } from "./messages";
 import { localIso } from "./lib/localIso";
 import { stateAfterFailure } from "./lib/failureState";
 import { audioFileName, downloadAndWait } from "./lib/download";
+import { getSettings } from "./lib/settings";
 
 const COLLECT_TIMEOUT_MS = 3000;
 
@@ -286,6 +287,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg !== "object") return false;
   if (msg.target === "background") {
     const m = msg as FromOffscreen;
+    if (m.type === "get-settings") {
+      // R5: the offscreen doc has no chrome.storage. On failure the reply fails its validation there.
+      getSettings().then(sendResponse, () => sendResponse(undefined));
+      return true;
+    }
     if (m.type === "upload-result") serial(() => uploadResult(m)).catch(() => undefined);
     else if (m.type === "tab-ended") serial(stop).catch(() => undefined);
     return false;

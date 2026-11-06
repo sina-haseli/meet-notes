@@ -1,6 +1,6 @@
 import type { ChunkPlan, MeetingRecord, ScreenDesc, Step, Turn } from "../types";
 import * as realDb from "./db";
-import { getSettings, type Settings } from "./settings";
+import type { Settings } from "./settings";
 import { assembleChunk, planChunks, PCM_RATE } from "./audioChunks";
 import { encodeMp3 } from "./mp3";
 import { complete, describeImage, OpenRouterError, transcribeChunk } from "./openrouter";
@@ -18,10 +18,14 @@ export interface PipelineDeps {
   encode: typeof encodeMp3;
 }
 
-export function defaultPipelineDeps(): PipelineDeps {
+/**
+ * `settings` is called on every use (never cached). The pipeline runs in the offscreen document,
+ * which has no chrome.storage, so the caller supplies how to obtain them (R5: from the background).
+ */
+export function defaultPipelineDeps(settings: () => Promise<Settings>): PipelineDeps {
   return {
     db: realDb,
-    settings: () => getSettings(),
+    settings,
     transcribe: transcribeChunk,
     describe: describeImage,
     complete,

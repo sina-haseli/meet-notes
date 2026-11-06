@@ -1,7 +1,7 @@
-import "fake-indexeddb/auto";
 import { describe, it, expect } from "vitest";
 import { SliceBuffer } from "../src/lib/sliceBuffer";
 import { SERVICES_NOTICE, snapshotServices } from "../src/lib/servicesSnapshot";
+import { isOffscreenIdle, type OffscreenActivity } from "../src/lib/offscreenIdle";
 import type { Settings } from "../src/lib/settings";
 
 function settings(role: Settings["role"]): Pick<Settings, "role"> {
@@ -39,6 +39,33 @@ describe("SliceBuffer", () => {
     ]);
     expect(buf.totalSamples).toBe(175000);
   });
+
+  it("failedWriteDoesNotBlockLaterSlicesAndFlushRejectsWithFirstError", async () => {
+    const written: number[] = [];
+    const first = new Error("quota 0");
+    const buf = new SliceBuffer(async (seq) => {
+      if (seq === 0) throw first;
+      if (seq === 2) throw new Error("quota 2");
+      written.push(seq);
+    }, 10);
+    buf.push(new Int16Array(35)); // slices 0, 1, 2 + a tail of 5
+    await expect(buf.flush()).rejects.toBe(first);
+    expect(written).toEqual([1, 3]);
+    // The error is reported once; a later flush with nothing new succeeds.
+    await expect(buf.flush()).resolves.toBeUndefined();
+  });
+});
+
+describe("isOffscreenIdle", () => {
+  const quiet: OffscreenActivity = { recording: false, stopping: false, processing: false, queued: 0, helperPending: false };
+  it("idleOnlyWhenNothingIsGoingOn", () => {
+    expect(isOffscreenIdle(quiet)).toBe(true);
+    expect(isOffscreenIdle({ ...quiet, recording: true })).toBe(false);
+    expect(isOffscreenIdle({ ...quiet, stopping: true })).toBe(false);
+    expect(isOffscreenIdle({ ...quiet, processing: true })).toBe(false);
+    expect(isOffscreenIdle({ ...quiet, queued: 1 })).toBe(false);
+    expect(isOffscreenIdle({ ...quiet, helperPending: true })).toBe(false);
+  });
 });
 
 describe("snapshotServices", () => {
@@ -72,6 +99,25 @@ describe("snapshotServices", () => {
       servicesNotice: "Made without your services folder — Allow & Retry",
     });
     expect(SERVICES_NOTICE).toBe("Made without your services folder — Allow & Retry");
+  });
+
+  it("snapshotQueryPermissionThrowsGivesNotice", async () => {
+    const h = {
+      kind: "directory",
+      name: "services",
+      queryPermission: async () => {
+        throw new DOMException("gone", "NotFoundError");
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    const out = await snapshotServices(settings("technical"), async () => h, async () => "x");
+    expect(out).toEqual({ servicesContext: null, servicesNotice: SERVICES_NOTICE });
+  });
+
+  it("snapshotReadThrowsGivesNotice", async () => {
+    const out = await snapshotServices(settings("technical"), async () => fakeHandle("granted"), async () => {
+      throw new DOMException("moved", "NotFoundError");
+    });
+    expect(out).toEqual({ servicesContext: null, servicesNotice: SERVICES_NOTICE });
   });
 
   it("snapshotPmNoNotice", async () => {

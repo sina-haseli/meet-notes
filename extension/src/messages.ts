@@ -1,4 +1,5 @@
 import type { MeetingType, SpeakerInterval, UploadMeta } from "./types";
+import type { Settings } from "./lib/settings";
 
 export type RecState = "idle" | "recording" | "uploading" | "upload-failed" | "done";
 
@@ -68,7 +69,11 @@ export type FromOffscreen =
   | { target: "background"; type: "tab-ended" }
   | { target: "background"; type: "processed"; meetingId: string; ok: boolean }
   /** Not recording and nothing queued or being processed: the document may be closed. */
-  | { target: "background"; type: "offscreen-idle" };
+  | { target: "background"; type: "offscreen-idle" }
+  /** R5: the offscreen doc has no chrome.storage; the background replies with GetSettingsReply. */
+  | { target: "background"; type: "get-settings" };
+/** Reply to get-settings: the current Settings, read fresh by the background. */
+export type GetSettingsReply = Settings;
 
 // ---- background -> content script (Task 13) ----
 export interface CollectResponse {
