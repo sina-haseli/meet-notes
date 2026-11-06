@@ -9,7 +9,7 @@ import { encodeMp3 } from "./mp3";
 import { complete, describeImage, OpenRouterError, transcribeChunk } from "./openrouter";
 import { mergeChunks, parseChunkOutput, renderTranscriptMd, TranscriptParseError } from "./transcript";
 import { assignSpeakers } from "./speakers";
-import { buildNotesPrompt, NOTES_MAX_TOKENS, NotesError, splitNotesOutput } from "./notes";
+import { buildNotesPrompt, NOTES_MAX_TOKENS, NotesError, splitNotesOutput, stripCodePaths } from "./notes";
 import { DESCRIBE_PROMPT, MAX_DESCRIBED, pickEvenly } from "./screens";
 
 export interface PipelineDeps {
@@ -193,7 +193,7 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
               "Meet Notes: code search failed; continuing without code evidence:",
               e instanceof Error ? `${e.name}: ${e.message}` : String(e),
             );
-            codeSearch = { status: "done", keywords: [], services: [], limitHit: false };
+            codeSearch = { status: "skipped", reason: "error" };
           }
         }
       }
@@ -212,7 +212,8 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       await save({ costUsd: cost });
       try {
         const { summaryMd, notesMd } = splitNotesOutput(text);
-        await save({ summaryMd, notesMd });
+        // The email summary carries service names only: drop any file path the model put there.
+        await save({ summaryMd: stripCodePaths(summaryMd, rec!.codeSearch), notesMd });
       } catch (e) {
         if (e instanceof NotesError) throw new FriendlyError(MSG_NOTES, e.message);
         throw e;

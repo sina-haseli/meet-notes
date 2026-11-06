@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNotesPrompt, renderCodeEvidence, splitNotesOutput, NotesError, NOTES_MAX_TOKENS } from "../src/lib/notes";
+import { buildNotesPrompt, renderCodeEvidence, splitNotesOutput, stripCodePaths, NotesError, NOTES_MAX_TOKENS } from "../src/lib/notes";
 import { TEMPLATES } from "../src/lib/templates";
 import type { MeetingType } from "../src/types";
 
@@ -66,6 +66,7 @@ describe("code evidence", () => {
     expect(renderCodeEvidence(undefined)).toBe("(code search not run)");
     expect(renderCodeEvidence({ status: "skipped", reason: "no-permission" })).toBe("(code search skipped: no-permission)");
     expect(renderCodeEvidence({ status: "skipped", reason: "no-folder" })).toBe("(code search skipped: no-folder)");
+    expect(renderCodeEvidence({ status: "skipped", reason: "error" })).toBe("(code search skipped: error)");
     expect(renderCodeEvidence({ status: "skipped", reason: "off" })).toBe("(code search not used)");
     expect(renderCodeEvidence({ status: "skipped", reason: "not-technical" })).toBe("(code search not used)");
     expect(renderCodeEvidence({ status: "done", keywords: ["a"], services: [], limitHit: false }))
@@ -173,5 +174,33 @@ describe("code evidence", () => {
     }
     expect(TEMPLATES.daily).not.toContain("سرویس‌های احتمالی برای تغییر (پیشنهاد AI)");
     expect(TEMPLATES.daily).not.toContain("## Where to look in the code (AI suggestion)");
+  });
+});
+
+describe("stripCodePaths", () => {
+  const cs = {
+    status: "done" as const, keywords: ["kavenegar"], limitHit: false,
+    services: [{ service: "maserati", keywords: ["kavenegar"], files: [{ path: "maserati/plugins/kavenegar/informing.go", snippets: [] }] }],
+  };
+  it("removesEvidencePathsAndServiceFileTokens", () => {
+    const summary = [
+      "خلاصه",
+      "- maserati — ارسال پیامک (`maserati/plugins/kavenegar/informing.go`)",
+      "- maserati: see maserati/internal/notify.go.",
+      "- maserati/plugins/kavenegar/informing.go",
+    ].join("\n");
+    const out = stripCodePaths(summary, cs);
+    expect(out).not.toContain("informing.go");
+    expect(out).not.toContain("notify.go");
+    expect(out).not.toContain("maserati/");
+    expect(out.split("\n")[1]).toBe("- maserati — ارسال پیامک");
+    expect(out).toContain("- maserati: see.");
+    expect(out.startsWith("خلاصه")).toBe(true);
+  });
+  it("leavesSummaryAloneWithoutEvidence", () => {
+    const t = "maserati/x.go stays when no service was suggested";
+    expect(stripCodePaths(t, undefined)).toBe(t);
+    expect(stripCodePaths(t, { status: "skipped", reason: "off" })).toBe(t);
+    expect(stripCodePaths("سرویس maserati", cs)).toBe("سرویس maserati");
   });
 });

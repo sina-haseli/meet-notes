@@ -274,7 +274,9 @@ describe("code step", () => {
       });
       const out = await processMeeting("m1", s.deps);
       expect(out.status).toBe("ready");
-      expect(out.codeSearch).toEqual({ status: "done", keywords: [], services: [], limitHit: false });
+      // M1: the notes say "Code search skipped (error)." instead of "No matching code found."
+      expect(out.codeSearch).toEqual({ status: "skipped", reason: "error" });
+      expect(promptOf(s)).toContain("## Code evidence\n(code search skipped: error)");
       expect(warn).toHaveBeenCalledTimes(1);
       const logged = warn.mock.calls[0].map(String).join(" ");
       expect(logged).toContain("disk");
@@ -302,6 +304,21 @@ describe("code step", () => {
     expect(again.status).toBe("ready");
     expect(again.codeSearch?.status).toBe("done");
     expect(extractKeywords).toHaveBeenCalledTimes(2);
+  });
+
+  it("summaryLosesFilePaths", async () => {
+    const complete = vi.fn(async () => ({
+      text: "<<<SUMMARY>>>\nخلاصه\n- maserati — کیف پول (maserati/wallet.go)\n- maserati/internal/pay.go\n<<<NOTES>>>\n# Notes\n- maserati/wallet.go",
+      cost: 0.1,
+    }));
+    const s = on({}, { complete });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.summaryMd).not.toContain("wallet.go");
+    expect(out.summaryMd).not.toContain("pay.go");
+    expect(out.summaryMd).toContain("maserati — کیف پول");
+    // the AI notes keep their paths
+    expect(out.notesMd).toContain("maserati/wallet.go");
   });
 
   it("resumeSkipsDoneCodeStep", async () => {

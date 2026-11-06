@@ -14,7 +14,7 @@ const GENERIC = new Set([
   "service", "services", "page", "button", "data", "code", "file", "user", "users", "system",
   "api", "app", "application", "front", "frontend", "back", "backend", "design", "figma", "test",
 ]);
-const SHAPE = /^[a-z0-9][a-z0-9_.\-]{1,39}$/;
+const SHAPE = /^[a-z0-9][a-z0-9_.\-]{2,39}$/; // 3 to 40 characters
 
 export function parseKeywords(raw: string): string[] {
   const first = raw.indexOf("[");

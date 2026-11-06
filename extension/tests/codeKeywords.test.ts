@@ -11,6 +11,9 @@ describe("codeKeywords", () => {
     expect(parseKeywords(JSON.stringify(many))).toHaveLength(12);
     expect(parseKeywords('["Redis","redis","REDIS","kafka"]')).toEqual(["redis", "kafka"]);
   });
+  it("keywordsNeedThreeCharacters", () => {
+    expect(parseKeywords('["a","ab","db","abc","s3x","go"]')).toEqual(["abc", "s3x"]);
+  });
   it("extractKeywordsSendsTranscriptAndPrompt", async () => {
     const calls: { model: string; text: string }[] = [];
     const fake = (async (_k: string, model: string, content: unknown[]) => {

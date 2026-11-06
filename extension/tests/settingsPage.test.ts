@@ -19,15 +19,16 @@ describe("formatBytes", () => {
 describe("codeSwitchStates", () => {
   const tech = (o: Partial<Settings> = {}): Settings => ({ ...base, role: "technical", ...o });
 
-  it("is disabled with a hint when no folder is chosen", () => {
+  it("is disabled and shown off with a hint when no folder is chosen", () => {
+    // M5: a disabled switch never looks on, even when the stored setting is true.
     expect(codeSwitchState(tech({ codeSuggestions: true }), false)).toEqual({
-      checked: true,
+      checked: false,
       disabled: true,
       hint: "Choose a services folder first.",
     });
   });
-  it("is disabled for the pm role", () => {
-    expect(codeSwitchState({ ...base, role: "pm" }, true)).toEqual({
+  it("is disabled and shown off for the pm role", () => {
+    expect(codeSwitchState({ ...base, role: "pm", codeSuggestions: true }, true)).toEqual({
       checked: false,
       disabled: true,
       hint: "Only for the Technical role.",

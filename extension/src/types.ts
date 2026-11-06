@@ -6,7 +6,7 @@ export interface Turn { startMs: number; endMs: number; speaker: string; text: s
 export interface ScreenDesc { atMs: number; description: string }
 export interface CodeFile { path: string; snippets: string[] }      // path relative to the services folder, "/"-separated, starts with the service dir
 export interface CodeService { service: string; keywords: string[]; files: CodeFile[] }
-export type CodeSkipReason = "off" | "not-technical" | "no-folder" | "daily" | "no-permission";
+export type CodeSkipReason = "off" | "not-technical" | "no-folder" | "daily" | "no-permission" | "error";
 export type CodeSearch =
   | { status: "skipped"; reason: CodeSkipReason }
   | { status: "done"; keywords: string[]; services: CodeService[]; limitHit: boolean };

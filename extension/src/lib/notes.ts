@@ -77,6 +77,48 @@ export function buildNotesPrompt(
   return `${template}\n${info}\n${shots}\n${ctx}\n${code}\n## Transcript\n${transcriptMd}\n`;
 }
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const TRAILING_PUNCT = new Set([".", ",", ":", ";", "!", "?", "،"]);
+
+/** Tidies a summary line a path was cut out of: empty quotes/brackets, doubled or stray spaces. */
+function tidy(line: string): string {
+  return line
+    .replace(/``/g, "")
+    .replace(/\(\s*\)|\[\s*\]/g, "")
+    .replace(/ {2,}/g, " ")
+    .replace(/ ([.,:;!?،])/g, "$1")
+    .trimEnd();
+}
+
+/**
+ * The email summary names services only, never file paths (spec §4). The notes model is told so;
+ * this enforces it: every evidence path, and any `<suggested service>/….<ext>` token, is removed.
+ */
+export function stripCodePaths(summaryMd: string, cs: CodeSearch | undefined): string {
+  if (!cs || cs.status !== "done" || cs.services.length === 0) return summaryMd;
+  const paths = cs.services.flatMap((s) => s.files.map((f) => f.path)).filter((p) => p.length > 0);
+  // `<service>/` followed by non-space, non-bracket characters; whether it ends in `.ext` is checked below.
+  const tokens = cs.services.map(
+    (s) => new RegExp(`(?<![\\w./-])${escapeRe(s.service)}/[^\\s()\\[\\]<>"'\`,;،]+`, "g"));
+  const out: string[] = [];
+  for (const line of summaryMd.split("\n")) {
+    let l = line;
+    for (const p of paths) l = l.split(p).join("");
+    for (const re of tokens) {
+      l = l.replace(re, (tok) => {
+        let end = tok.length;
+        while (end > 0 && TRAILING_PUNCT.has(tok[end - 1])) end--;
+        return /\.[A-Za-z0-9]{1,10}$/.test(tok.slice(0, end)) ? tok.slice(end) : tok;
+      });
+    }
+    if (l === line) { out.push(line); continue; }
+    const t = tidy(l);
+    if (/^\s*(?:[-*•]|\d+[.)])?\s*$/.test(t)) continue; // nothing but a bullet was left
+    out.push(t);
+  }
+  return out.join("\n");
+}
+
 export function splitNotesOutput(text: string): { summaryMd: string; notesMd: string } {
   const s = text.indexOf(SUMMARY_MARK);
   const n = s !== -1 ? text.indexOf(NOTES_MARK, s + SUMMARY_MARK.length) : -1;
