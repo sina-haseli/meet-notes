@@ -12,7 +12,7 @@ Records a Google Meet meeting (Persian speech with English technical terms) and 
 3. Open a Google Meet tab, pick the meeting type (Grooming, Planning, Technical or Daily), and press **Start recording**. Press **Stop** when the meeting ends.
 4. A notification says when the notes are ready. Open the meeting to see the Summary, AI notes, Transcript and Screens tabs. Copy the summary, open a Gmail draft, or download everything as a .zip. Nothing is sent or emailed unless you click it.
 
-Audio and screenshots go only to OpenRouter to make the notes; everything else stays in your browser. See [docs/privacy-policy.md](docs/privacy-policy.md).
+Audio and screenshots go only to OpenRouter to make the notes; everything else stays in your browser. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described. See [docs/privacy-policy.md](docs/privacy-policy.md).
 
 ## Local helper mode (advanced)
 
@@ -22,7 +22,7 @@ Records a Google Meet meeting (Persian speech with English technical terms), tur
 
 Two parts:
 
-- `extension/` is a Chrome (Manifest V3) extension. It records the tab audio plus your microphone, logs who is speaking, grabs a screenshot when the shared screen changes, and uploads everything to the helper when you press Stop.
+- `extension/` is a Chrome (Manifest V3) extension. It records the tab audio plus your microphone, logs who is speaking, grabs an image of the Meet tab (the shared screen and participants' video) when the picture changes, and uploads everything to the helper when you press Stop.
 - `helper/` is a local Python server on `127.0.0.1:47821`. It splits the audio, transcribes it through OpenRouter (Gemini), has Claude Code write the notes, serves the review page and sends the email through Gmail.
 
 Data leaves your PC only to OpenRouter (audio and screenshots), Anthropic (through Claude Code, text only) and Gmail (the email you send). Nothing is emailed until you press Send.
@@ -101,8 +101,8 @@ In the extension, open Settings, Advanced, **Local helper**, turn it on and pres
 
 ### Daily use
 
-1. Make sure the helper is running (see Auto-start below).
-2. In a Meet tab, open the popup, pick the meeting type (`grooming`, `planning` or `technical`), optionally type a title, press **Start**.
+1. Make sure the helper is running (see Auto-start below) and that **Local helper** is on in the extension's Settings, Advanced, Local helper (with the token from **Connect**).
+2. In a Meet tab, open the popup, pick the meeting type (`grooming`, `planning`, `technical` or `daily`), optionally type a title, press **Start**. The helper itself accepts only `grooming`, `planning` and `technical` (it rejects a `daily` upload with HTTP 400), so turn Local helper off in Settings for a Daily standup; built-in mode handles all four.
 3. When the meeting is over, press **Stop**. The popup shows "Uploading..." then "Uploaded".
 4. The review page opens when processing finishes (a few minutes for an hour-long meeting). Check the three tabs (notes, email, transcript), rename speakers (`Speaker 2` to a real name; this updates all three tabs), and edit anything that is wrong.
 5. Enter the recipients and press **Send**. Nothing is sent before that.
@@ -138,7 +138,7 @@ The helper always writes its log to `%APPDATA%\meetnotes\helper.log`. With no co
 None of this has been run against a live Meet, OpenRouter or Gmail yet. Do it once with a short test meeting (a second device or colleague).
 
 **Recording**
-1. Helper running, extension built and loaded, token and name saved in the popup.
+1. Helper running, extension built and loaded, Local helper on with its token (Settings, Advanced, Local helper) and your name saved in Settings.
 2. Join the test Meet, press Start. On first use allow the mic on the permission page, return to Meet, press Start again.
 3. While recording: you still hear the meeting, and the popup timer runs.
 4. Speak from both devices. Share a screen and change slides twice. Press Stop.
@@ -170,9 +170,9 @@ The Meet page markup is not documented and changes, so the selectors are best gu
 
 ### Troubleshooting
 
-- **Popup says "Upload failed - Retry":** the helper was not reachable, or it rejected the upload. In the second case the message shows the helper's reason (e.g. `HTTP 401: invalid or missing token`), and rejected uploads are not retried automatically. Fix the cause (start the helper, fix the token), then press Retry; the recording is kept in memory until it uploads. If the recording is lost (browser closed), the popup says so.
+- **Popup says "Upload failed - Retry":** the helper was not reachable, or it rejected the upload. In the second case the message shows the helper's reason (e.g. `HTTP 401: invalid or missing token`), and rejected uploads are not retried automatically. Fix the cause (start the helper, fix the token in Settings, Advanced, Local helper), then press Retry; the recording is kept in memory until it uploads. If the recording is lost (browser closed), the popup says so.
 - **The upload keeps failing and you need to record the next meeting:** press **Save audio & discard** under the error, then press it again to confirm. The audio is saved to your Downloads folder as `meet-notes-<start time>.webm`, the popup shows the full path, and the extension is ready to record again. The speaker log and screenshots of that recording are dropped.
-- **Helper not running / popup cannot connect:** run `.venv\Scripts\python -m meetnotes` in `helper\` and check nothing else uses port 47821. Check the token in the popup matches `config.toml`. Run `install-startup.ps1` to start it at login. Look in `%APPDATA%\meetnotes\helper.log` for errors.
+- **Helper not running / popup cannot connect:** run `.venv\Scripts\python -m meetnotes` in `helper\` and check nothing else uses port 47821. Open the extension's Settings, Advanced, **Local helper**: check it is on, the URL is the helper's (default `http://127.0.0.1:47821`), and press **Connect** to copy the current token into the Token field (it must match `config.toml`). Run `install-startup.ps1` to start it at login. Look in `%APPDATA%\meetnotes\helper.log` for errors.
 - **Review page says "helper restarted while processing - press Retry":** the helper stopped (PC restart, crash) while that meeting was being processed. Press Retry.
 - **Review page answers "Invalid host header":** open it as `http://127.0.0.1:47821/` or `http://localhost:47821/`. Other host names are refused on purpose (protection against DNS rebinding).
 - **Claude Code usage limit or other error while writing notes:** the review page shows the error and a **Retry** button. Wait for your limit to reset and press Retry. There is no fallback to another model, by design.

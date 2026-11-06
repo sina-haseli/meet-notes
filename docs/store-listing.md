@@ -14,11 +14,11 @@ Meet Notes records a Google Meet meeting when you press Start and, when you pres
 - a **Summary** (Persian, with English technical terms kept as spoken) ready to paste into an email,
 - **AI notes** (English) following a template for your meeting type: Grooming, Planning, Technical or Daily,
 - a **Transcript** with speaker names and timestamps,
-- **Screens**: shared-screen screenshots with short descriptions.
+- **Screens**: images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described, each with a short description.
 
 How it works: setup takes three steps (your OpenRouter key, your name in Meet, and optionally a services folder so notes use your real service names). Processing runs inside Chrome and uses your own OpenRouter key, so there is no Meet Notes account and no Meet Notes server. If you close Chrome mid-processing, it resumes when you reopen it.
 
-Privacy: audio and screenshots go only to OpenRouter to make your notes. Everything else stays in your browser. No analytics, no tracking. Nothing is emailed or shared unless you click Copy or Open in Gmail.
+Privacy: audio and screenshots go only to OpenRouter to make your notes. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described. Everything else stays in your browser. No analytics, no tracking. Nothing is emailed or shared unless you click Copy or Open in Gmail.
 
 Typical cost is about $0.10 to $0.20 for a one-hour meeting, paid to OpenRouter with your own key.
 
@@ -33,17 +33,17 @@ Please tell the people in your meeting that you are recording.
 - **unlimitedStorage:** meetings (audio and screenshots) are stored in the browser and can exceed the default quota; a one-hour recording is tens of megabytes.
 - **notifications:** shows "notes ready" or "needs attention" when processing finishes while the popup is closed.
 - **downloads:** saves the user's requested downloads: the notes .zip, the transcript and the audio of a failed meeting.
-- **Host permission `https://openrouter.ai/*`:** the only service the extension sends data to; used to transcribe, describe screenshots and write the notes with the user's own key, and to check the key's remaining credit.
+- **Host permission `https://openrouter.ai/*`:** the only service the extension sends data to; used to transcribe, describe screenshots (images of the Meet tab: the shared screen and participants' video) and write the notes with the user's own key, and to check the key's remaining credit.
 - **Content script on `https://meet.google.com/*`:** reads the names of the participants who are speaking on the Meet page so the transcript can label speakers. It does not read chat or any other page content and sends nothing by itself.
 - **Optional host permission `http://127.0.0.1:47821/*`:** requested at runtime only if the user turns on "Local helper" (an advanced mode); connects to a helper program on the user's own computer.
 
 ## Data usage disclosures (Privacy tab)
 
-- **Data types collected:** Website content (audio of the meeting, screenshots, participant names on the Meet page); Authentication information (the user's OpenRouter API key); Personal communications (meeting audio and transcripts). Tick nothing else.
+- **Data types collected:** Website content (audio of the meeting; screenshots, i.e. images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described; participant names on the Meet page); Authentication information (the user's OpenRouter API key); Personal communications (meeting audio and transcripts). Tick nothing else.
 - **Is data sold to third parties?** No.
 - **Used or transferred for purposes unrelated to the single purpose?** No.
 - **Used or transferred to determine creditworthiness or for lending?** No.
-- **Where does it go?** Only to OpenRouter (to make the notes), using the user's own key. Everything else stays in the user's browser.
+- **Where does it go?** Only to OpenRouter (to make the notes), using the user's own key: the audio, up to 60 screenshots of the Meet tab per meeting (shared screen and participants' video), speaker names and the optional services text. Everything else stays in the user's browser.
 - **Certify:** Limited Use compliance, and that the data usage follows the Developer Program Policies.
 - **Privacy policy URL:** publish `docs/privacy-policy.md` (for example on GitHub Pages) and paste its URL. Fill in the contact email first.
 
@@ -58,4 +58,4 @@ Please tell the people in your meeting that you are recording.
 
 ## Third-party licences
 
-The package bundles `@breezystack/lamejs` (MP3 encoder), licensed **LGPL-3.0**, plus `marked` (MIT) and `fflate` (MIT). `THIRD_PARTY_NOTICES.md` is included in the package zip and lists them. The LGPL library is used unmodified, its source is public (https://github.com/breezystack/lamejs), and the project's source and `package-lock.json` let anyone rebuild with a replacement. Keep the notices file in every upload.
+The package bundles `@breezystack/lamejs` (MP3 encoder), licensed **LGPL-3.0**, plus `marked` (MIT) and `fflate` (MIT). `THIRD_PARTY_NOTICES.md` is included in the package zip and lists them with their full licence texts (MIT for both, LGPL-3.0 and the GPL-3.0 it incorporates). The LGPL library is used unmodified, its source is public (https://github.com/breezystack/lamejs), and the project's source and `package-lock.json` let anyone rebuild with a replacement. Keep the notices file in every upload.

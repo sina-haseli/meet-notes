@@ -7,7 +7,7 @@ Meet Notes is a Chrome extension that records a Google Meet meeting you choose t
 ## What the extension handles
 
 - **Meeting audio:** the audio of the Meet tab and your microphone, only while you have pressed Start.
-- **Screenshots:** images of the shared screen, captured while you record when the picture changes.
+- **Screenshots:** while you record, images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described.
 - **Speaker names:** the names shown on the Meet page, used to label who spoke.
 - **Your OpenRouter API key**, which you enter in setup.
 - **Optional services-folder text:** if you choose a services folder, the extension reads folder names, the start of each README and package manifest names, so notes use the right service names. You choose the folder; the extension reads nothing else on your computer.
@@ -15,8 +15,8 @@ Meet Notes is a Chrome extension that records a Google Meet meeting you choose t
 
 ## Where the data goes
 
-- **OpenRouter only.** To make your notes, the extension sends audio, screenshots, speaker names and the optional services text to OpenRouter (https://openrouter.ai), using your own API key. OpenRouter passes the request to the AI model you selected. OpenRouter's and the model provider's privacy terms apply to that processing.
-- **Local helper mode (optional, off by default):** if you turn it on, recordings are sent to a helper program on your own computer at `127.0.0.1`. That data does not leave your computer except as that helper's own OpenRouter calls.
+- **OpenRouter only.** To make your notes, the extension sends audio, screenshots (up to 60 images of the Meet tab per meeting, which can show the shared screen and participants' video), speaker names and the optional services text to OpenRouter (https://openrouter.ai), using your own API key. OpenRouter passes the request to the AI model you selected. OpenRouter's and the model provider's privacy terms apply to that processing.
+- **Local helper mode (optional, off by default):** if you turn it on, recordings (audio, screenshots and speaker names) are sent to a local helper at a URL you set (default `http://127.0.0.1:47821`), meant to be a helper program on your own computer. That data does not leave your computer except as that helper's own calls.
 - Nothing is sent anywhere else. There are no analytics, no telemetry and no crash reporting.
 - Nothing is emailed, posted or shared unless you click an action such as "Open in Gmail" or "Copy".
 
