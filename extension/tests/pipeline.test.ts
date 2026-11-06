@@ -227,7 +227,7 @@ describe("code step", () => {
     expect(s.codeDir).not.toHaveBeenCalled();
     expect(s.extractKeywords).not.toHaveBeenCalled();
     expect(s.searchCode).not.toHaveBeenCalled();
-    expect(promptOf(s)).toContain("## Code evidence\n(code search skipped: off)");
+    expect(promptOf(s)).toContain("## Code evidence\n(code search not used)");
   });
 
   it("skipsDaily", async () => {
@@ -266,10 +266,23 @@ describe("code step", () => {
   });
 
   it("searchErrorDoesNotFailMeeting", async () => {
-    const s = on({}, { searchCode: vi.fn(async () => { throw new Error("disk"); }) });
-    const out = await processMeeting("m1", s.deps);
-    expect(out.status).toBe("ready");
-    expect(out.codeSearch).toEqual({ status: "done", keywords: [], services: [], limitHit: false });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const s = on({}, {
+        key: () => "sk-or-secret-key",
+        searchCode: vi.fn(async () => { throw new Error("disk"); }),
+      });
+      const out = await processMeeting("m1", s.deps);
+      expect(out.status).toBe("ready");
+      expect(out.codeSearch).toEqual({ status: "done", keywords: [], services: [], limitHit: false });
+      expect(warn).toHaveBeenCalledTimes(1);
+      const logged = warn.mock.calls[0].map(String).join(" ");
+      expect(logged).toContain("disk");
+      expect(logged).not.toContain("sk-or-secret-key");
+      expect(logged).not.toContain("wallet");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("keywordOpenRouterErrorFailsStep", async () => {

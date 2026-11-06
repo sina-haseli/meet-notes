@@ -187,7 +187,12 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
             codeSearch = { status: "done", keywords: kw.keywords, services: found.services, limitHit: found.limitHit };
           } catch (e) {
             if (e instanceof OpenRouterError) throw e;
-            // A local search problem must never cost the user their notes.
+            // A local search problem must never cost the user their notes. Log only the error
+            // itself (never the key, keywords or file text) so the failure is not silent.
+            console.warn(
+              "Meet Notes: code search failed; continuing without code evidence:",
+              e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+            );
             codeSearch = { status: "done", keywords: [], services: [], limitHit: false };
           }
         }
