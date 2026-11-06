@@ -39,7 +39,7 @@ Please tell the people in your meeting that you are recording.
 
 ## Data usage disclosures (Privacy tab)
 
-- **Data types collected:** Website content (audio of the meeting; screenshots, i.e. images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described; participant names on the Meet page); Authentication information (the user's OpenRouter API key); Personal communications (meeting audio and transcripts). Tick nothing else.
+- **Data types collected:** Website content (audio of the meeting; screenshots, i.e. images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described; participant names on the Meet page); Authentication information (the user's OpenRouter API key); Personal communications (meeting audio and transcripts); Website content also covers, only when the user turns on “Suggest where to change the code”, the file paths and short masked code snippets from the services folder the user chose (config files by path only; `.env`, key files and lockfiles are never read). Tick nothing else.
 - **Is data sold to third parties?** No.
 - **Used or transferred for purposes unrelated to the single purpose?** No.
 - **Used or transferred to determine creditworthiness or for lending?** No.

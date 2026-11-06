@@ -107,8 +107,10 @@ describe("searchCode", () => {
     const line = 'const apiKey = ["' + "q".repeat(1500) + '", "hunter", kavenegar]';
     const root = fakeDir("services", { maserati: { "a.ts": line } });
     const r = await searchCode(root, ["kavenegar"]);
-    const snip = r.services[0].files[0].snippets[0];
-    expect(snip).toContain("kavenegar");
+    // The file still counts as a match; on a secret line every list item is a value, so even the
+    // keyword item is masked (safe direction) and the far-away secret never leaks.
+    expect(r.services[0].files[0].path).toBe("maserati/a.ts");
+    const snip = r.services[0].files[0].snippets[0] ?? "";
     expect(snip).not.toContain("hunter");
   });
 

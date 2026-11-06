@@ -9,7 +9,8 @@ describe("redact", () => {
     expect(maskSecrets('"apiKey": "abc"')).toBe('"***": "***"');
     expect(maskSecrets("Authorization: Bearer eyJhbGciOi12345678901234")).toBe("Authorization: Bearer ***");
     // R3: `Token` makes this a secret line, so the unquoted value after := is masked.
-    expect(maskSecrets("client := kavenegar.New(cfg.Token)")).toBe("client := ***)");
+    // The value stops at "(" so nested `Name: value` pairs inside are still reached.
+    expect(maskSecrets("client := kavenegar.New(cfg.Token)")).toBe("client := ***(cfg.Token)");
     expect(maskSecrets("func SendDeliveryStatus()")).toBe("func SendDeliveryStatus()");
   });
   it("masksSchemesQuotedKeysUrlsAndTypedDecls", () => {
@@ -111,5 +112,52 @@ describe("redact", () => {
     expect(isReadable("informing.go")).toBe(true);
     expect(isReadable("Dockerfile")).toBe(true);
     expect(isReadable("logo.png")).toBe(false);
+  });
+});
+
+// Follow-up to the final review (residual R6): plural names, space-separated forms, bare lists,
+// and values nested in struct literals. Short letters-only secrets so the long-run rule can't hide a miss.
+describe("redact follow-up", () => {
+  it.each([
+    ['TOKENS = ["hunter"]', "hunter"],
+    ['API_KEYS = ["hunter", "hunterb"]', "hunter"],
+    ['api_keys = ["hunter"]', "hunter"],
+    ['SECRETS = {"a": "hunter"}', "hunter"],
+    ["passwords: [hunter]", "hunter"],
+    ["tokens: [abc, hunter]", "hunter"],
+    ["API_KEYS = [hunter, other]", "hunter"],
+    ["--password hunter", "hunter"],
+    ["mycli --api-key hunter --verbose", "hunter"],
+    ["ENV API_KEY hunter", "hunter"],
+    ["export KAVENEGAR_TOKEN hunter", "hunter"],
+    ["PASSWORD hunter", "hunter"],
+    ["curl -H Bearer hunter", "hunter"],
+    ["cfg := Config{Token: hunter}", "hunter"],
+    ["c := New(Options{APIKey: hunter})", "hunter"],
+  ])("masks %s", (line, secret) => {
+    expect(maskSecrets(line)).not.toContain(secret);
+  });
+
+  it.each([
+    "const monkey = 5",
+    "tokenizer.next()",
+    "if token == nil {",
+    "for _, k := range keyboard {",
+    "passenger count",
+  ])("leaves %s readable", (line) => {
+    expect(maskSecrets(line)).toBe(line);
+  });
+
+  it("keeps the flag and the name readable", () => {
+    expect(maskSecrets("--password hunter")).toBe("--password ***");
+    expect(maskSecrets("ENV API_KEY hunter")).toBe("ENV API_KEY ***");
+    expect(maskSecrets("passwords: [hunter, other]")).toBe("passwords: [***, ***]");
+  });
+
+  it("stays linear on a 512 KB list on a secret line", () => {
+    const line = "tokens: [" + "ab, ".repeat(131072) + "]";
+    const t = performance.now();
+    maskSecrets(line);
+    expect(performance.now() - t).toBeLessThan(200);
   });
 });

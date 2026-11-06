@@ -13,7 +13,11 @@ const SECRET_SEGMENTS = new Set([
   "credential", "credentials", "bearer", "apikey", "apitoken", "accesskey", "secretkey", "privatekey",
   "accesstoken", "authtoken", "clientsecret", "dsn",
 ]);
-const MAX_SEGMENT = 13; // longest entry above ("authorization", "clientsecret" is 12)
+const MAX_SEGMENT = 14; // longest entry above ("authorization") plus a plural "s"
+/** A segment is secret-ish as listed or as a plural (`tokens`, `keys`, `passwords`, `api_keys`). */
+function isSecretSegment(seg: string): boolean {
+  return SECRET_SEGMENTS.has(seg) || (seg.length > 3 && seg.endsWith("s") && SECRET_SEGMENTS.has(seg.slice(0, -1)));
+}
 const SECRET_COMPOUNDS = [
   "apikey", "apitoken", "accesskey", "secretkey", "privatekey", "accesstoken", "authtoken", "clientsecret", "passphrase",
 ];
@@ -52,7 +56,7 @@ export function isSecretLine(line: string): boolean {
       (t === K.Up && p === K.Low) ||
       (t === K.Up && p === K.Up && i + 1 < n && kind(line.charCodeAt(i + 1)) === K.Low); // APIKey -> API|Key
     if (!cut) continue;
-    if (i - s <= MAX_SEGMENT && SECRET_SEGMENTS.has(lower.slice(s, i))) return true;
+    if (i - s <= MAX_SEGMENT && isSecretSegment(lower.slice(s, i))) return true;
     s = t === K.Other ? -1 : i;
   }
   return false;
@@ -80,7 +84,9 @@ function separatorAt(line: string, i: number): number {
   return 0;
 }
 
-const VALUE_END = new Set([",", ";", ")", "}"]);
+// A value also stops at an opening bracket, so `Config{Token: x}` masks `Config` and then still
+// reaches the inner `Token: x`.
+const VALUE_END = new Set([",", ";", ")", "}", "{", "(", "[", "]"]);
 const NO_VALUE_START = new Set([",", ";", ")", "}", "{", "(", "["]);
 const SCHEME_PREFIX = /^(bearer|basic|token)(\s+)/i;
 
@@ -131,6 +137,15 @@ function maskSecretLine(line: string): string {
     const sep = separatorAt(line, i);
     if (sep === 0) { i++; continue; }
     i = skipSpaces(line, i + sep);
+    if (i < n && line[i] === "[") {
+      // A bare list after a secret name: every item, quoted or not, is a value.
+      let close = line.indexOf("]", i + 1);
+      if (close < 0) close = n;
+      out.push(line.slice(last, i + 1), maskListItems(line.slice(i + 1, close)));
+      last = close;
+      i = close;
+      continue;
+    }
     if (i >= n || NO_VALUE_START.has(line[i]) || isQuote(line[i])) continue;
     let j = valueEnd(line, i);
     let word = line.slice(i, j);
@@ -149,6 +164,81 @@ function maskSecretLine(line: string): string {
     }
     out.push(line.slice(last, i), MASK);
     last = j;
+    i = j;
+  }
+  out.push(line.slice(last));
+  return out.join("");
+}
+
+const LIST_STOP = new Set([",", "[", "]", "{", "}", "(", ")"]);
+
+/** Items of a bare list: quoted items keep their quotes, every item's content becomes ***. Linear. */
+function maskListItems(inner: string): string {
+  const out: string[] = [];
+  let i = 0;
+  while (i < inner.length) {
+    const c = inner[i];
+    if (isSpace(c) || LIST_STOP.has(c)) { out.push(c); i++; continue; }
+    if (isQuote(c)) {
+      const end = inner.indexOf(c, i + 1);
+      if (end < 0) { out.push(c, MASK); break; }
+      out.push(c, end > i + 1 ? MASK : "", c);
+      i = end + 1;
+      continue;
+    }
+    let j = i;
+    while (j < inner.length && !isSpace(inner[j]) && !LIST_STOP.has(inner[j]) && !isQuote(inner[j])) j++;
+    out.push(MASK);
+    i = j;
+  }
+  return out.join("");
+}
+
+const ENV_WORDS = new Set(["env", "export", "set"]);
+const SPACE_SCHEMES = new Set(["bearer", "basic"]);
+const isWordChar = (code: number) => kind(code) !== K.Other || code === 95 /* _ */ || code === 45; /* - */
+
+/**
+ * Secret values written with a space instead of `=`/`:` on a secret line:
+ * `--password x`, `ENV API_KEY x`, `export TOKEN x`, `PASSWORD x` at the start of a line, `Bearer x`.
+ * The word after such a name is masked unless it is an operator, a quote (masked later) or a bracket.
+ */
+function maskSpacedValues(line: string): string {
+  const n = line.length;
+  const out: string[] = [];
+  let last = 0;
+  let prevWord = "";
+  let i = 0;
+  while (i < n) {
+    if (!isWordChar(line.charCodeAt(i))) { i++; continue; }
+    let j = i + 1;
+    while (j < n && isWordChar(line.charCodeAt(j))) j++;
+    const word = line.slice(i, j);
+    const lower = word.toLowerCase();
+    const bare = word.replace(/^-+/, "");
+    const secret = bare.length > 0 && isSecretLine(bare);
+    const atLineStart = line.slice(0, i).trim() === "";
+    const allCaps = /[A-Z]/.test(bare) && !/[a-z]/.test(bare) && bare.length >= 3;
+    const trigger =
+      (secret && word.startsWith("-")) ||
+      (secret && ENV_WORDS.has(prevWord.toLowerCase())) ||
+      (secret && allCaps && atLineStart) ||
+      SPACE_SCHEMES.has(lower);
+    prevWord = word;
+    if (trigger && j < n && isSpace(line[j])) {
+      const k = skipSpaces(line, j);
+      const c = line[k];
+      if (k < n && !isQuote(c) && !NO_VALUE_START.has(c) && separatorAt(line, k) === 0 && c !== "=" && c !== "!" && c !== "<" && c !== ">") {
+        const e = valueEnd(line, k);
+        if (e > k && !line.startsWith("-", k)) {
+          out.push(line.slice(last, k), MASK);
+          last = e;
+          i = e;
+          prevWord = "";
+          continue;
+        }
+      }
+    }
     i = j;
   }
   out.push(line.slice(last));
@@ -257,7 +347,7 @@ function maskLongRuns(line: string): string {
  */
 export function maskSecrets(line: string, secretLine = false): string {
   let s = maskUrlCreds(line);
-  if (secretLine || isSecretLine(s)) s = maskSecretLine(s);
+  if (secretLine || isSecretLine(s)) s = maskSecretLine(maskSpacedValues(s));
   return maskLongRuns(s);
 }
 
