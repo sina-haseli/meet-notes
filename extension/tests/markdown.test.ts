@@ -6,7 +6,18 @@ describe("renderMarkdownSafe", () => {
     const html = renderMarkdownSafe("# Title\n\n- **a**\n- [site](https://example.com)");
     expect(html).toContain("<h1>Title</h1>");
     expect(html).toContain("<strong>a</strong>");
-    expect(html).toContain('<a href="https://example.com">site</a>');
+    expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">site</a>');
+  });
+
+  it("opens every link in a new tab without an opener", () => {
+    const html = renderMarkdownSafe('[a](https://a.example "T") and [m](mailto:x@y.z) and <https://auto.example>');
+    const anchors = html.match(/<a [^>]*>/g) ?? [];
+    expect(anchors).toHaveLength(3);
+    for (const a of anchors) {
+      expect(a).toContain('target="_blank"');
+      expect(a).toContain('rel="noopener noreferrer"');
+    }
+    expect(html).toContain('title="T"');
   });
 
   it("escapes raw HTML blocks and inline tags", () => {

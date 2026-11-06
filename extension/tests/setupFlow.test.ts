@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nextStep, setupState } from "../src/lib/setupFlow";
+import { checkKeyThenSave, nextStep, setupState } from "../src/lib/setupFlow";
 import { DEFAULT_MODELS, HELPER_URL, type Settings } from "../src/lib/settings";
 
 function settings(patch: Partial<Settings> = {}): Settings {
@@ -66,5 +66,34 @@ describe("setupFlow", () => {
     expect(setupState(settings({ selfName: "Sina", role: "technical", setupStep: 3 })).step).toBe(1);
     // Step 3 saved, then the role changed to PM: step 3 doesn't exist for PMs.
     expect(setupState(settings({ openrouterKey: "k", role: "pm", setupStep: 3 })).step).toBe(2);
+  });
+});
+
+describe("checkKeyThenSave", () => {
+  it("savesTheNewKeyOnlyAfterItChecksOut", async () => {
+    const saved: string[] = [];
+    const res = await checkKeyThenSave("sk-good", async () => ({ ok: true as const, remainingUsd: 1 }), () => true, async (k) => {
+      saved.push(k);
+    });
+    expect(res).toEqual({ ok: true, remainingUsd: 1 });
+    expect(saved).toEqual(["sk-good"]);
+  });
+
+  it("aFailedCheckKeepsTheOldKey", async () => {
+    const saved: string[] = [];
+    const res = await checkKeyThenSave("sk-bad", async () => ({ ok: false as const, userMessage: "nope" }), () => true, async (k) => {
+      saved.push(k);
+    });
+    expect(res).toEqual({ ok: false, userMessage: "nope" });
+    expect(saved).toEqual([]);
+  });
+
+  it("aStaleCheckSavesNothingAndReportsNothing", async () => {
+    const saved: string[] = [];
+    const res = await checkKeyThenSave("sk-old", async () => ({ ok: true as const, remainingUsd: null }), () => false, async (k) => {
+      saved.push(k);
+    });
+    expect(res).toBeNull();
+    expect(saved).toEqual([]);
   });
 });

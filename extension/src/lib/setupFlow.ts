@@ -54,3 +54,19 @@ export function keyCheckText(
   if (!res.ok) return res.userMessage.replace(/ Check it in Settings, then press Retry\.$/, " Check that you pasted the whole key.");
   return res.remainingUsd === null ? "Connected" : `Connected · $${res.remainingUsd.toFixed(2)} left`;
 }
+
+/**
+ * Checks a newly typed key and saves it only when the check passes and is still the latest one,
+ * so a typo never replaces a working key. Returns the check result, or null when it was superseded.
+ */
+export async function checkKeyThenSave<R extends { ok: boolean }>(
+  key: string,
+  check: (key: string) => Promise<R>,
+  isCurrent: () => boolean,
+  save: (key: string) => Promise<void>,
+): Promise<R | null> {
+  const res = await check(key);
+  if (!isCurrent()) return null;
+  if (res.ok) await save(key);
+  return res;
+}

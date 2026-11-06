@@ -1,7 +1,7 @@
 // The Settings page: key, name/role, services folder, Advanced (models, local helper), storage.
 import { getSettings, saveSettings, DEFAULT_MODELS, type Settings } from "./lib/settings";
 import { checkKey } from "./lib/openrouter";
-import { keyCheckText, setupState } from "./lib/setupFlow";
+import { checkKeyThenSave, keyCheckText, setupState } from "./lib/setupFlow";
 import { putHandle, getHandle, deleteHandle, listMeetings, deleteMeeting } from "./lib/db";
 import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { formatBytes } from "./lib/storageUsage";
@@ -65,13 +65,18 @@ function setKeyStatus(text: string, kind: "hint" | "ok" | "err", retryKey?: stri
   }
 }
 
+/** Checks `key`; only a key that checks out replaces the saved one. */
 async function runKeyCheck(key: string): Promise<void> {
   const seq = ++keySeq;
   setKeyStatus("Checking your key…", "hint");
-  const res = await checkKey(key);
-  if (seq !== keySeq) return;
+  const res = await checkKeyThenSave(key, checkKey, () => seq === keySeq, async (k) => {
+    await save({ openrouterKey: k });
+    renderKey();
+    await syncSetupDone();
+  });
+  if (!res) return; // superseded by a newer key
   if (res.ok) setKeyStatus(keyCheckText(res), "ok");
-  else setKeyStatus(keyCheckText(res), "err", key);
+  else setKeyStatus(`${keyCheckText(res)}${settings.openrouterKey ? " Your saved key was not changed." : ""}`, "err", key);
 }
 
 $("keyChange").addEventListener("click", () => {
@@ -79,7 +84,7 @@ $("keyChange").addEventListener("click", () => {
   const input = $<HTMLInputElement>("key");
   input.value = "";
   input.focus();
-  setKeyStatus("Paste the new key. The old one is kept until you do.", "hint");
+  setKeyStatus("Paste the new key. The old one is kept until the new one is checked.", "hint");
 });
 
 $<HTMLInputElement>("key").addEventListener("input", (e) => {
@@ -88,11 +93,8 @@ $<HTMLInputElement>("key").addEventListener("input", (e) => {
   if (keyTimer !== undefined) clearTimeout(keyTimer);
   setKeyStatus("", "hint");
   if (!key) return;
+  // Saved only once the check passes (runKeyCheck): the old key stays until then.
   keyTimer = window.setTimeout(() => void runKeyCheck(key), KEY_DEBOUNCE_MS);
-  void save({ openrouterKey: key }).then(() => {
-    renderKey();
-    return syncSetupDone();
-  });
 });
 
 // ---------- name & role ----------

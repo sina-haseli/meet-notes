@@ -1,5 +1,5 @@
 // Markdown -> HTML for the summary preview and the clipboard's text/html part. The Markdown comes
-// from an LLM, so raw HTML is escaped, links keep only safe targets and images become their alt
+// from an LLM, so raw HTML is escaped, links keep only safe targets (and open in a new tab) and images become their alt
 // text (a remote image would be fetched, sending a request to a third party).
 import { Marked, type Tokens } from "marked";
 
@@ -26,9 +26,18 @@ md.use({
     html(token: Tokens.HTML | Tokens.Tag): string {
       return escapeHtml(token.text);
     },
-    link(token: Tokens.Link): string | false {
-      if (SAFE_HREF.test(token.href.trim())) return false; // marked's own rendering
-      return this.parser.parseInline(token.tokens);
+    link(token: Tokens.Link): string {
+      const text = this.parser.parseInline(token.tokens);
+      if (!SAFE_HREF.test(token.href.trim())) return text;
+      let href: string;
+      try {
+        href = encodeURI(token.href).replace(/%25/g, "%"); // as marked's own cleanUrl
+      } catch {
+        return text;
+      }
+      const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
+      // The page is an extension page: a link must never navigate it away or get window.opener.
+      return `<a href="${escapeHtml(href)}"${title} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
     image(token: Tokens.Image): string {
       return escapeHtml(token.text);
