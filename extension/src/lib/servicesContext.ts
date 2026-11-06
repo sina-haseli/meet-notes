@@ -9,10 +9,22 @@ interface DirWithValues {
   values(): AsyncIterable<FileSystemHandle>;
 }
 
-async function listEntries(dir: FileSystemDirectoryHandle): Promise<FileSystemHandle[]> {
+export async function listEntries(dir: FileSystemDirectoryHandle): Promise<FileSystemHandle[]> {
   const out: FileSystemHandle[] = [];
   for await (const e of (dir as unknown as DirWithValues).values()) out.push(e);
   return out;
+}
+
+/** The chosen folder is itself one repo when it holds a root marker (package.json, go.mod, …). */
+export function isSingleRepo(entries: FileSystemHandle[]): boolean {
+  return entries.some((e) => ROOT_MARKERS.includes(e.name));
+}
+
+/** Top-level service folders of a multi-service folder, sorted by name. */
+export function serviceDirs(entries: FileSystemHandle[]): FileSystemDirectoryHandle[] {
+  return entries
+    .filter((e) => e.kind === "directory" && !e.name.startsWith(".") && e.name !== "node_modules")
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) as FileSystemDirectoryHandle[];
 }
 
 async function readText(h: FileSystemHandle): Promise<string | null> {
@@ -63,17 +75,14 @@ async function describeService(name: string, entries: FileSystemHandle[], caps: 
 export async function readServicesContext(dir: FileSystemDirectoryHandle, caps: ServicesCaps = SERVICES_CAPS): Promise<string> {
   const entries = await listEntries(dir);
   const blocks: string[] = [];
-  if (entries.some((e) => ROOT_MARKERS.includes(e.name))) {
+  if (isSingleRepo(entries)) {
     blocks.push(await describeService(dir.name, entries, caps));
   } else {
-    const subs = entries
-      .filter((e) => e.kind === "directory" && !e.name.startsWith(".") && e.name !== "node_modules")
-      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .slice(0, caps.maxServices);
+    const subs = serviceDirs(entries).slice(0, caps.maxServices);
     for (const s of subs) {
       // One unreadable service folder must not lose the whole context: it gets dashes.
       try {
-        blocks.push(await describeService(s.name, await listEntries(s as FileSystemDirectoryHandle), caps));
+        blocks.push(await describeService(s.name, await listEntries(s), caps));
       } catch {
         blocks.push(`### ${s.name}\nmanifest: -\nREADME:\n-\n`);
       }
