@@ -16,7 +16,7 @@ Outputs per meeting, in `D:\meeting-notes\YYYY-MM-DD_<type>_<slug>\`: `transcrip
 - Windows, Chrome.
 - Python 3.12 (3.11 also works).
 - Node 22.22 or newer (the extension tests use jsdom, which needs it).
-- Claude Code installed and logged in with your Pro account (`claude` must work in a terminal). The helper calls `claude -p`; no Anthropic API key is used.
+- Claude Code installed and logged in with your Pro account (`claude` must work in a terminal). The helper calls `claude -p`; no Anthropic API key is used. That run is isolated from your own Claude Code setup: `--restricted` (your user/project settings, hooks and plugins are not loaded), `--strict-mcp-config` (no MCP servers), read-only tools only (`Read`, `Grep`, `Glob`), and the model from `claude_model`.
 - An OpenRouter API key with some credit.
 - ffmpeg is NOT required. It comes bundled through `imageio-ffmpeg` (a `ffmpeg` on PATH is used if you have one).
 
@@ -41,7 +41,8 @@ The first run creates `%APPDATA%\meetnotes\config.toml` with a random `token`. S
 | `openrouter_api_key` | `""` | Your OpenRouter key. **Required.** |
 | `transcribe_model` | `google/gemini-2.5-flash` | OpenRouter model used to transcribe audio. See "Choosing the transcription model". |
 | `vision_model` | `google/gemini-2.5-flash` | Model that describes screenshots. |
-| `self_name` | `Sina` | Your name, used to label your own microphone. |
+| `claude_model` | `sonnet` | Model Claude Code uses to write the notes (`claude -p --model ...`, on your Pro login). An alias (`sonnet`, `opus`) or a full model name. |
+| `self_name` | `Sina` | **Not used by the helper.** The name that labels your own microphone comes from the extension popup's "Your name" setting. |
 | `last_recipients` | `[]` | Filled in automatically with the last addresses you sent to. |
 | `mail_method` | `gmail_api` | `gmail_api` or `smtp`. |
 | `mail_from` | `""` | Your Gmail address (needed for `smtp`; used as the sender). |
@@ -58,7 +59,7 @@ Default method is the Gmail API (OAuth):
 3. APIs and Services, OAuth consent screen: set it up (External is fine); add your Gmail address as a test user.
 4. APIs and Services, Credentials, Create credentials, **OAuth client ID**, application type **Desktop app**.
 5. Download the JSON and save it as `%APPDATA%\meetnotes\gmail_client.json`.
-6. The first time you press Send, a browser window opens for consent. After you approve, the helper stores `gmail_token.json` next to the config and does not ask again.
+6. The first time you press Send, a browser window opens for consent. After you approve, the helper stores `gmail_token.json` next to the config. While the OAuth app is in "Testing" mode, Google expires that token after 7 days; the helper notices and opens the consent window again on the next Send (nothing to delete by hand).
 
 Fallback, SMTP with an app password: turn on 2-Step Verification for your Google account, create an App Password, then in `config.toml` set
 
@@ -78,7 +79,7 @@ npm run build
 
 Then in Chrome: `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, choose the `extension\` folder. Rebuild (`npm run build`) and press the reload icon on the extension card after any change.
 
-Open the extension popup, expand **Settings**, paste the helper **token** from `config.toml` and your **name** (as it appears in Meet), and Save. The first time you press Start, a page asks for microphone permission. Allow it, go back to the Meet tab, and press Start again.
+Open the extension popup, expand **Settings**, paste the helper **token** from `config.toml` and your **name**, and Save. **"Your name" must match your Meet display name exactly** (same spelling, spaces and letters): it labels your own microphone in the speaker log, and a different spelling shows up as a second person. The first time you press Start, a page asks for microphone permission. Allow it, go back to the Meet tab, and press Start again.
 
 ## Daily use
 
@@ -111,6 +112,8 @@ powershell -ExecutionPolicy Bypass -File D:\projects\persian_transacribe\helper\
 ```
 
 This creates `Meet Notes Helper.lnk` in your Startup folder (`shell:startup`), which runs `helper\.venv\Scripts\pythonw.exe -m meetnotes` from `helper\` with no console window. Delete the shortcut to undo it. To stop a running helper, end `pythonw.exe` in Task Manager.
+
+The helper always writes its log to `%APPDATA%\meetnotes\helper.log`. With no console window, that file is the only place errors show up.
 
 ## First real-meeting checklist
 
@@ -149,12 +152,15 @@ The Meet page markup is not documented and changes, so the selectors are best gu
 
 ## Troubleshooting
 
-- **Popup says "Upload failed - Retry":** the helper was not reachable. Start it, then press Retry; the recording is kept in memory until it uploads. If the recording is lost (browser closed), the popup says so.
-- **Helper not running / popup cannot connect:** run `.venv\Scripts\python -m meetnotes` in `helper\` and check nothing else uses port 47821. Check the token in the popup matches `config.toml`. Run `install-startup.ps1` to start it at login.
+- **Popup says "Upload failed - Retry":** the helper was not reachable, or it rejected the upload. In the second case the message shows the helper's reason (e.g. `HTTP 401: invalid or missing token`), and rejected uploads are not retried automatically. Fix the cause (start the helper, fix the token), then press Retry; the recording is kept in memory until it uploads. If the recording is lost (browser closed), the popup says so.
+- **The upload keeps failing and you need to record the next meeting:** press **Save audio & discard** under the error, then press it again to confirm. The audio is saved to your Downloads folder as `meet-notes-<start time>.webm`, the popup shows the full path, and the extension is ready to record again. The speaker log and screenshots of that recording are dropped.
+- **Helper not running / popup cannot connect:** run `.venv\Scripts\python -m meetnotes` in `helper\` and check nothing else uses port 47821. Check the token in the popup matches `config.toml`. Run `install-startup.ps1` to start it at login. Look in `%APPDATA%\meetnotes\helper.log` for errors.
+- **Review page says "helper restarted while processing - press Retry":** the helper stopped (PC restart, crash) while that meeting was being processed. Press Retry.
+- **Review page answers "Invalid host header":** open it as `http://127.0.0.1:47821/` or `http://localhost:47821/`. Other host names are refused on purpose (protection against DNS rebinding).
 - **Claude Code usage limit or other error while writing notes:** the review page shows the error and a **Retry** button. Wait for your limit to reset and press Retry. There is no fallback to another model, by design.
 - **OpenRouter errors (HTTP 401/402):** check `openrouter_api_key` and your credit. The meeting shows the error; retry from the review page.
 - **Voice labels like "Speaker 2" instead of names:** the Meet selectors are not matching (Meet changed its markup). Rename the speakers on the review page for this meeting, and fix the selectors using the checklist above.
-- **Gmail consent or send fails:** make sure `gmail_client.json` is a Desktop-app client in `%APPDATA%\meetnotes\` and your address is a test user. Delete `gmail_token.json` to redo consent, or switch to `mail_method = "smtp"`.
+- **Gmail consent or send fails:** make sure `gmail_client.json` is a Desktop-app client in `%APPDATA%\meetnotes\` and your address is a test user. Deleting `gmail_token.json` redoes consent (an expired token is handled automatically), or switch to `mail_method = "smtp"`.
 
 ## Development
 
