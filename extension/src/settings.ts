@@ -5,9 +5,9 @@ import { keyCheckText, setupState } from "./lib/setupFlow";
 import { putHandle, getHandle, deleteHandle, listMeetings, deleteMeeting } from "./lib/db";
 import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { formatBytes } from "./lib/storageUsage";
+import { twoClick } from "./lib/dom";
 
 const KEY_DEBOUNCE_MS = 600;
-const ARM_MS = 4000;
 const HELPER_ORIGIN = "http://127.0.0.1:47821/*";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -35,27 +35,6 @@ function save(patch: Partial<Settings>): Promise<void> {
 function syncSetupDone(): Promise<void> {
   const done = setupState(settings).done;
   return done === settings.setupDone ? Promise.resolve() : save({ setupDone: done });
-}
-
-/** A button that needs two clicks within a few seconds (no confirm() dialog). */
-function twoClick(btn: HTMLButtonElement, idle: string, armedText: string, run: () => Promise<void>): void {
-  let timer: number | undefined;
-  const reset = () => {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = undefined;
-    btn.classList.remove("armed");
-    btn.textContent = idle;
-  };
-  btn.addEventListener("click", () => {
-    if (timer === undefined) {
-      btn.classList.add("armed");
-      btn.textContent = armedText;
-      timer = window.setTimeout(reset, ARM_MS);
-      return;
-    }
-    reset();
-    void run();
-  });
 }
 
 // ---------- key ----------

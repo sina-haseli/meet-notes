@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meeting - Meet Notes</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    .wrap { max-width: 900px; margin: 0 auto; }
+    .mn-header { padding-bottom: 58px; }
+    .mn-header .mn-title { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .head-main { min-width: 0; flex: 1; }
+    .head-meta { margin-top: 10px; flex-wrap: wrap; }
+    .head-meta .mn-sub { opacity: 0.9; }
+    a.mn-icon-btn { text-decoration: none; font-size: 12.5px; }
+    .cards { margin: -46px 12px 24px; }
+    .cards > .mn-card { margin: 0 0 12px; }
+    .msg { margin-top: 8px; font-size: 12px; }
+    .msg:empty { display: none; }
+    .msg.err { color: var(--mn-err); }
+    .actions { margin-top: 10px; flex-wrap: wrap; }
+    .banner-title { font-weight: 600; font-size: 13.5px; }
+    .banner-err .banner-title { color: var(--mn-err); }
+    details { margin-top: 10px; font-size: 12px; color: var(--mn-muted); }
+    details > summary { cursor: pointer; }
+    details pre { white-space: pre-wrap; word-break: break-word; background: var(--mn-soft); padding: 8px 10px; border-radius: 8px; margin: 6px 0 0; font-size: 11.5px; }
+
+    .speakers { align-items: center; }
+    .speakers .mn-label { margin: 0 6px 0 0; }
+    .mn-chip.warn { background: var(--mn-wait-bg); color: var(--mn-wait); }
+    .rename-in { width: 170px; padding: 4px 9px; border-radius: 999px; font-size: 12px; }
+
+    .tabs { margin-top: 14px; max-width: 520px; }
+    .pane { margin-top: 12px; }
+    .toolbar { flex-wrap: wrap; margin-bottom: 8px; }
+    .toolbar .mn-seg { width: 170px; }
+    .toolbar .mn-btn { padding: 8px 12px; font-size: 12.5px; }
+    textarea.doc {
+      width: 100%;
+      min-height: 420px;
+      resize: vertical;
+      padding: 12px 14px;
+      border: 1px solid var(--mn-border);
+      border-radius: 10px;
+      font: 14px/1.8 var(--mn-font);
+      color: var(--mn-text);
+      background: #fff;
+      outline: none;
+    }
+    textarea.doc:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+    textarea.doc[readonly] { background: #fafbff; }
+    textarea.mono { font: 13px/1.6 ui-monospace, Consolas, "Cascadia Mono", monospace; }
+    .preview { min-height: 420px; padding: 4px 16px; border: 1px solid var(--mn-border); border-radius: 10px; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+    .preview h1 { font-size: 19px; } .preview h2 { font-size: 16.5px; } .preview h3 { font-size: 14.5px; }
+    .preview code { background: var(--mn-soft); padding: 1px 4px; border-radius: 4px; }
+    .preview a { color: var(--mn-accent); }
+
+    .transcript { max-height: 70vh; overflow: auto; border: 1px solid var(--mn-border); border-radius: 10px; padding: 6px 4px; }
+    .tline { display: flex; gap: 10px; padding: 5px 10px; border-radius: 8px; font-size: 13.5px; line-height: 1.7; }
+    .tline:hover { background: var(--mn-soft); }
+    .tline .t { flex: none; color: var(--mn-hint); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 2px; }
+    .tline .who { flex: none; font-weight: 600; color: var(--mn-accent); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tline .txt { flex: 1; min-width: 0; }
+    .tline .unc { color: var(--mn-wait); font-style: italic; font-size: 12px; margin-inline-start: 6px; }
+    .tline.u .who { color: var(--mn-wait); }
+    .empty { color: var(--mn-muted); padding: 18px 4px; font-size: 13px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .shot { margin: 0; border-radius: 10px; overflow: hidden; background: var(--mn-soft); }
+    .shot button { display: block; width: 100%; padding: 0; border: 0; background: #000; cursor: zoom-in; }
+    .shot img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+    .shot figcaption { padding: 8px 10px 10px; font-size: 12px; line-height: 1.5; color: var(--mn-soft-text); }
+    .shot .at { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--mn-accent); margin-inline-end: 6px; }
+
+    .foot { margin-top: 14px; flex-wrap: wrap; }
+    #saved { font-size: 12px; color: var(--mn-muted); }
+    #saved.ok { color: var(--mn-ok); }
+    #saved.err { color: var(--mn-err); }
+    #actionMsg, #deleteMsg { margin: 0; }
+    .pagefoot { padding: 0 2px; }
+
+    .lightbox { position: fixed; inset: 0; background: rgba(10, 10, 20, 0.85); display: flex; align-items: center; justify-content: center; padding: 24px; cursor: zoom-out; z-index: 10; }
+    .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <div class="head-main">
+          <div class="mn-title" id="title" dir="auto">Loading…</div>
+          <div class="mn-sub">Meet Notes</div>
+        </div>
+        <a class="mn-icon-btn" id="allLink" href="meetings.html">All meetings</a>
+        <button class="mn-icon-btn" id="gear" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+      <div class="mn-row head-meta" id="headMeta" hidden>
+        <span class="mn-sub" id="when"></span>
+        <span class="mn-badge" id="typeChip"></span>
+        <span class="mn-badge" id="cost" title="OpenRouter cost of this meeting"></span>
+      </div>
+    </header>
+
+    <main class="cards">
+      <section class="mn-card" id="notFound" hidden>
+        <div class="banner-title">This meeting was not found</div>
+        <div class="mn-hint">It may have been deleted. <a class="mn-link" href="meetings.html">See all meetings</a></div>
+      </section>
+
+      <section class="mn-card" id="helperCard" hidden>
+        <div class="banner-title">This meeting was processed by your local helper</div>
+        <div class="mn-hint" id="helperHint"><a class="mn-link" id="helperLink" target="_blank" rel="noopener">Open it in the local helper</a></div>
+      </section>
+
+      <section class="mn-card" id="progressCard" hidden>
+        <div class="banner-title" id="stepLine"></div>
+        <div class="mn-progress" id="progressBar"><span id="progressFill"></span></div>
+        <div class="mn-hint" id="progressHint">You can close this tab. Meet Notes keeps working and notifies you when the notes are ready.</div>
+      </section>
+
+      <section class="mn-card banner-err" id="errorCard" hidden>
+        <div class="banner-title" id="errorText"></div>
+        <div class="mn-row actions">
+          <button class="mn-btn" id="retry">Retry</button>
+          <button class="mn-btn-ghost" id="downloadAudio">Download audio</button>
+        </div>
+        <details id="errorDetails">
+          <summary>Technical details</summary>
+          <pre id="errorDetail"></pre>
+        </details>
+        <div class="msg" id="errorMsg"></div>
+      </section>
+
+      <section class="mn-card" id="interruptedCard" hidden>
+        <div class="banner-title">The recording stopped unexpectedly</div>
+        <div class="mn-hint">The audio recorded up to that point was saved.</div>
+        <div class="mn-row actions"><button class="mn-btn" id="processSaved">Process what was saved</button></div>
+        <div class="msg" id="interruptedMsg"></div>
+      </section>
+
+      <section class="mn-card" id="noticeCard" hidden>
+        <div class="mn-row">
+          <div class="mn-sp">
+            <div class="banner-title">Made without your services folder</div>
+            <div class="mn-hint">Chrome needs your permission to read the folder again. The notes are then written again with your real service names.</div>
+          </div>
+          <button class="mn-btn" id="allowRetry">Allow &amp; Retry</button>
+        </div>
+        <div class="msg" id="noticeMsg"></div>
+      </section>
+
+      <section class="mn-card" id="mainCard" hidden>
+        <div class="mn-row speakers" id="speakersRow" hidden>
+          <span class="mn-label">Speakers</span>
+          <div class="mn-chips" id="speakers"></div>
+        </div>
+
+        <div class="mn-seg tabs" id="tabs" role="tablist">
+          <button type="button" data-tab="summary" role="tab">Summary</button>
+          <button type="button" data-tab="notes" role="tab">AI notes</button>
+          <button type="button" data-tab="transcript" role="tab">Transcript</button>
+          <button type="button" data-tab="screens" role="tab" id="screensTab">Screens</button>
+        </div>
+
+        <div class="pane" id="pane-summary">
+          <div class="mn-row toolbar">
+            <div class="mn-seg" id="summaryMode">
+              <button type="button" data-mode="edit" class="on">Edit</button>
+              <button type="button" data-mode="preview">Preview</button>
+            </div>
+            <div class="mn-sp"></div>
+            <button class="mn-btn-ghost" id="openGmail" title="Opens a Gmail draft with the subject filled in. Paste the summary into it.">Open in Gmail</button>
+            <button class="mn-btn" id="copySummary">Copy</button>
+          </div>
+          <textarea class="doc" id="summary" dir="auto" spellcheck="false" aria-label="Summary"></textarea>
+          <div class="preview" id="preview" dir="auto" hidden></div>
+          <div class="mn-hint">Copy keeps the formatting, so it pastes cleanly into an email.</div>
+        </div>
+
+        <div class="pane" id="pane-notes" hidden>
+          <div class="mn-row toolbar">
+            <div class="mn-sp"></div>
+            <button class="mn-btn-ghost" id="downloadZip" title="Notes, summary, transcript and screenshots">Download .zip</button>
+            <button class="mn-btn" id="copyNotes">Copy as Markdown</button>
+          </div>
+          <textarea class="doc mono" id="notes" dir="ltr" spellcheck="false" aria-label="AI notes"></textarea>
+        </div>
+
+        <div class="pane" id="pane-transcript" hidden>
+          <div class="mn-row toolbar">
+            <div class="mn-sp"></div>
+            <button class="mn-btn-ghost" id="downloadTranscript">Download .md</button>
+            <button class="mn-btn" id="copyTranscript">Copy</button>
+          </div>
+          <div class="transcript" id="transcript"></div>
+        </div>
+
+        <div class="pane" id="pane-screens" hidden>
+          <div class="grid" id="screens"></div>
+          <div class="empty" id="screensEmpty" hidden>No screenshots for this meeting.</div>
+        </div>
+
+        <div class="mn-row foot">
+          <span id="saved"></span>
+          <span class="msg" id="actionMsg"></span>
+        </div>
+      </section>
+
+      <div class="mn-row pagefoot" id="pageFoot" hidden>
+        <span class="msg err" id="deleteMsg"></span>
+        <div class="mn-sp"></div>
+        <button class="mn-btn-ghost" id="deleteMeeting">Delete meeting</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="lightbox" id="lightbox" hidden><img id="lightboxImg" alt="" /></div>
+
+  <script type="module" src="meeting.js"></script>
+</body>
+</html>

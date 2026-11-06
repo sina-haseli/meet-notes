@@ -597,7 +597,9 @@ async function processSaved(id: string): Promise<Ack> {
 async function retryMeeting(id: string): Promise<Ack> {
   const rec = await getMeeting(id);
   if (!rec || rec.mode !== "builtin") return { ok: false, error: "This meeting was not found." };
-  if (rec.status !== "error") return { ok: false, error: "This meeting has not failed." };
+  // A ready meeting whose notes were cleared (Allow & Retry on the services notice) is re-run too.
+  const rerun = rec.status === "ready" && !rec.notesMd;
+  if (rec.status !== "error" && !rerun) return { ok: false, error: "This meeting has not failed." };
   await updateMeeting(id, { status: "queued" });
   nudged.delete(id);
   const res = await sendProcess(id);

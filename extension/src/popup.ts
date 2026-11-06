@@ -17,6 +17,7 @@ import {
   stepText,
   stripMeetSuffix,
 } from "./lib/popupView";
+import { helperMeetingUrl } from "./lib/meetingView";
 
 const MEET_PREFIX = "https://meet.google.com/";
 const KEYS_URL = "https://openrouter.ai/keys";
@@ -410,7 +411,7 @@ let lastSignature = "";
 
 function meetingUrl(r: MeetingRecord): string {
   if (r.mode === "helper" && r.helperId) {
-    return `${settings.helper.url.replace(/\/+$/, "")}/meetings/${encodeURIComponent(r.helperId)}`;
+    return helperMeetingUrl(settings.helper.url, r.helperId);
   }
   return extUrl(`${MEETING_PATH}?id=${encodeURIComponent(r.id)}`);
 }
