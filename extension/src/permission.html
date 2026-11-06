@@ -3,14 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <title>Meet Notes — microphone access</title>
+  <link rel="stylesheet" href="theme.css" />
   <style>
-    body { font: 15px/1.5 system-ui, sans-serif; max-width: 520px; margin: 48px auto; padding: 0 16px; color: #202124; background: #fff; }
+    body { font-size: 14px; line-height: 1.5; }
+    .page { max-width: 560px; margin: 48px auto; padding: 0 16px; }
+    .page .mn-header { border-radius: 14px 14px 0 0; padding: 26px 28px 70px; }
+    .page .mn-header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+    .page .mn-card { margin: -52px 22px 22px; padding: 20px 22px; border-radius: 14px; }
+    .page .mn-card p { margin: 0 0 10px; }
+    #status { margin: 0; font-weight: 600; }
   </style>
 </head>
 <body>
-  <h1>Microphone access</h1>
-  <p>Meet Notes records your microphone together with the meeting audio. Please allow microphone access when Chrome asks.</p>
-  <p id="status">Waiting for permission…</p>
+  <div class="page">
+    <header class="mn-header">
+      <div class="mn-row">
+        <div class="mn-logo">M</div>
+        <h1>Microphone access</h1>
+      </div>
+    </header>
+    <section class="mn-card">
+      <p>Meet Notes records your microphone together with the meeting audio. Please allow microphone access when Chrome asks.</p>
+      <p id="status">Waiting for permission…</p>
+    </section>
+  </div>
   <script type="module" src="permission.js"></script>
 </body>
 </html>
