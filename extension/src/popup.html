@@ -45,11 +45,19 @@
     </header>
     <section class="mn-card">
       <div id="step1">
-        <label class="mn-label" for="key">Your OpenRouter API key</label>
-        <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
-        <div class="mn-hint">Meet Notes uses OpenRouter to write your notes. Create a key at
-          <a id="keysLink" href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>
-          and paste it here.</div>
+        <label class="mn-label" for="provider">AI provider</label>
+        <select class="mn-input" id="provider">
+          <option value="openrouter">OpenRouter</option>
+          <option value="avalai">AvalAI</option>
+          <option value="custom">Other (OpenAI-compatible)</option>
+        </select>
+        <div id="baseUrlField" hidden>
+          <label class="mn-label" for="baseUrl">API address</label>
+          <input class="mn-input" id="baseUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1" />
+        </div>
+        <label class="mn-label" for="key">Your API key</label>
+        <input class="mn-input" id="key" type="password" autocomplete="off" spellcheck="false" />
+        <div class="mn-hint" id="keyHint"></div>
         <div id="keyStatus" class="mn-hint"></div>
         <div class="mn-row actions">
           <div class="mn-sp"></div>

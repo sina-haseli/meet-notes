@@ -1,13 +1,16 @@
+// Client for the configured AI provider (OpenRouter, AvalAI or any OpenAI-compatible API).
+// The file keeps its old name; nothing here is OpenRouter-only except the parts marked so.
 import { TRANSCRIBE_PROMPT } from "./transcript";
+import type { Api } from "./provider";
 
-const BASE = "https://openrouter.ai/api/v1";
 const RETRY_DELAYS = [2000, 8000];
 
-const MSG_KEY = "OpenRouter rejected your API key. Check it in Settings, then press Retry.";
-const MSG_CREDIT = "Your OpenRouter credit ran out. Add credit at openrouter.ai, then press Retry.";
-const MSG_BUSY = "OpenRouter is busy or unavailable right now. Press Retry in a few minutes.";
-const MSG_NETWORK = "Couldn't reach OpenRouter. Check your internet connection, then press Retry.";
-const MSG_UNEXPECTED = "OpenRouter returned something unexpected. Press Retry.";
+const msgKey = (a: Api) => `${a.name} rejected your API key. Check it in Settings, then press Retry.`;
+const msgCredit = (a: Api) =>
+  `Your ${a.name} credit ran out. Add credit ${a.creditSite ? `at ${a.creditSite}` : "with your provider"}, then press Retry.`;
+const msgBusy = (a: Api) => `${a.name} is busy or unavailable right now. Press Retry in a few minutes.`;
+const msgNetwork = (a: Api) => `Couldn't reach ${a.name}. Check your internet connection, then press Retry.`;
+const msgUnexpected = (a: Api) => `${a.name} returned something unexpected. Press Retry.`;
 
 export class OpenRouterError extends Error {
   constructor(public userMessage: string, public detail: string, public status?: number) {
@@ -28,27 +31,34 @@ function defaultDeps(): OpenRouterDeps {
   };
 }
 
-function messageForStatus(status: number): string {
-  if (status === 401 || status === 403) return MSG_KEY;
-  if (status === 402) return MSG_CREDIT;
-  if (status === 429 || status >= 500) return MSG_BUSY;
-  return MSG_UNEXPECTED;
+function messageForStatus(api: Api, status: number): string {
+  if (status === 401 || status === 403) return msgKey(api);
+  if (status === 402) return msgCredit(api);
+  if (status === 429 || status >= 500) return msgBusy(api);
+  return msgUnexpected(api);
 }
 
 function isRetryable(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+function headers(api: Api, json: boolean): Record<string, string> {
+  const h: Record<string, string> = { Authorization: `Bearer ${api.key}` };
+  if (json) h["Content-Type"] = "application/json";
+  if (api.openrouter) h["X-Title"] = "Meet Notes";
+  return h;
+}
+
 /** Sends one request with the retry policy; resolves with a 2xx Response. */
-async function send(url: string, init: RequestInit, deps: OpenRouterDeps): Promise<Response> {
+async function send(api: Api, path: string, init: RequestInit, deps: OpenRouterDeps): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let failure: OpenRouterError;
     try {
-      const resp = await deps.fetch(url, init);
+      const resp = await deps.fetch(`${api.baseUrl}${path}`, init);
       if (resp.status >= 200 && resp.status < 300) return resp;
       let body = "";
       try { body = (await resp.text()).slice(0, 500); } catch { /* ignore */ }
-      failure = new OpenRouterError(messageForStatus(resp.status), `HTTP ${resp.status}: ${body}`, resp.status);
+      failure = new OpenRouterError(messageForStatus(api, resp.status), `HTTP ${resp.status}: ${body}`, resp.status);
       if (!isRetryable(resp.status)) throw failure;
     } catch (e) {
       if (e instanceof OpenRouterError) {
@@ -56,7 +66,7 @@ async function send(url: string, init: RequestInit, deps: OpenRouterDeps): Promi
         failure = e;
       } else {
         const name = e instanceof Error ? e.name : "Error";
-        failure = new OpenRouterError(MSG_NETWORK, `Network error (${name})`);
+        failure = new OpenRouterError(msgNetwork(api), `Network error (${name})`);
       }
     }
     if (attempt >= RETRY_DELAYS.length) throw failure;
@@ -65,7 +75,7 @@ async function send(url: string, init: RequestInit, deps: OpenRouterDeps): Promi
 }
 
 export async function complete(
-  key: string,
+  api: Api,
   model: string,
   content: unknown[],
   opts: { maxTokens?: number } = {},
@@ -74,20 +84,14 @@ export async function complete(
   const payload: Record<string, unknown> = {
     model,
     messages: [{ role: "user", content }],
-    usage: { include: true },
   };
+  // OpenRouter only: report the cost of each request. Other APIs may reject unknown fields.
+  if (api.openrouter) payload.usage = { include: true };
   if (opts.maxTokens !== undefined) payload.max_tokens = opts.maxTokens;
   const resp = await send(
-    `${BASE}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "X-Title": "Meet Notes",
-      },
-      body: JSON.stringify(payload),
-    },
+    api,
+    "/chat/completions",
+    { method: "POST", headers: headers(api, true), body: JSON.stringify(payload) },
     deps,
   );
   let data: any;
@@ -96,11 +100,11 @@ export async function complete(
     raw = await resp.text();
     data = JSON.parse(raw);
   } catch {
-    throw new OpenRouterError(MSG_UNEXPECTED, `HTTP ${resp.status}: ${raw.slice(0, 500)}`, resp.status);
+    throw new OpenRouterError(msgUnexpected(api), `HTTP ${resp.status}: ${raw.slice(0, 500)}`, resp.status);
   }
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string") {
-    throw new OpenRouterError(MSG_UNEXPECTED, `HTTP ${resp.status}: ${raw.slice(0, 500)}`, resp.status);
+    throw new OpenRouterError(msgUnexpected(api), `HTTP ${resp.status}: ${raw.slice(0, 500)}`, resp.status);
   }
   const cost = Number(data?.usage?.cost);
   return { text, cost: Number.isFinite(cost) ? cost : 0 };
@@ -117,35 +121,40 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function transcribeChunk(
-  key: string, model: string, mp3: Blob, deps?: OpenRouterDeps,
+  api: Api, model: string, mp3: Blob, deps?: OpenRouterDeps,
 ): Promise<{ text: string; cost: number }> {
   const data = await blobToBase64(mp3);
-  return complete(key, model, [
+  return complete(api, model, [
     { type: "text", text: TRANSCRIBE_PROMPT },
     { type: "input_audio", input_audio: { data, format: "mp3" } },
   ], {}, deps);
 }
 
 export async function describeImage(
-  key: string, model: string, jpeg: Blob, prompt: string, deps?: OpenRouterDeps,
+  api: Api, model: string, jpeg: Blob, prompt: string, deps?: OpenRouterDeps,
 ): Promise<{ text: string; cost: number }> {
   const b64 = await blobToBase64(jpeg);
-  return complete(key, model, [
+  return complete(api, model, [
     { type: "text", text: prompt },
     { type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } },
   ], {}, deps);
 }
 
+/**
+ * Checks the key: OpenRouter's key endpoint (with remaining credit), otherwise the
+ * OpenAI-compatible model list, which needs a valid key on most providers.
+ */
 export async function checkKey(
-  key: string, deps: OpenRouterDeps = defaultDeps(),
+  api: Api, deps: OpenRouterDeps = defaultDeps(),
 ): Promise<{ ok: true; remainingUsd: number | null } | { ok: false; userMessage: string }> {
   try {
-    const resp = await send(`${BASE}/key`, { method: "GET", headers: { Authorization: `Bearer ${key}`, "X-Title": "Meet Notes" } }, deps);
+    const resp = await send(api, api.openrouter ? "/key" : "/models", { method: "GET", headers: headers(api, false) }, deps);
+    if (!api.openrouter) return { ok: true, remainingUsd: null };
     const data: any = await resp.json();
     const rem = data?.data?.limit_remaining;
     return { ok: true, remainingUsd: typeof rem === "number" ? rem : null };
   } catch (e) {
     if (e instanceof OpenRouterError) return { ok: false, userMessage: e.userMessage };
-    return { ok: false, userMessage: MSG_UNEXPECTED };
+    return { ok: false, userMessage: msgUnexpected(api) };
   }
 }

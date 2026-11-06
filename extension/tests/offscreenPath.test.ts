@@ -27,7 +27,7 @@ describe("offscreen path", () => {
       throw new Error("chrome.storage is not available in an offscreen document");
     });
     vi.stubGlobal("chrome", { storage: { local: { get: storageGet, set: storageGet } } });
-    const s = { role: "technical", openrouterKey: "k" } as Settings;
+    const s = { role: "technical", apiKey: "k" } as Settings;
     const provider = vi.fn(async () => s);
     const deps = defaultPipelineDeps(provider);
     expect(await deps.settings()).toBe(s);

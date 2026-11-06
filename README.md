@@ -1,18 +1,18 @@
 # Meet Notes
 
-Records a Google Meet meeting (Persian speech with English technical terms) and turns it into a Persian summary, English notes and a transcript. It runs entirely in Chrome with your own OpenRouter key. No account, no server and nothing to install besides the extension.
+Records a Google Meet meeting (Persian speech with English technical terms) and turns it into a Persian summary, English notes and a transcript. It runs entirely in Chrome with your own API key for OpenRouter, AvalAI or any OpenAI-compatible AI service. No account, no server and nothing to install besides the extension.
 
 ## Install from the Chrome Web Store / first run
 
 1. Install **Meet Notes** from the Chrome Web Store and pin it to the toolbar.
 2. Open the extension and follow the 3 setup steps:
-   1. **OpenRouter key:** paste your key (get one at openrouter.ai/keys). It shows "Connected" and your remaining credit.
+   1. **AI provider and key:** pick OpenRouter (default), AvalAI, or **Other (OpenAI-compatible)** and enter its API address (the part before `/chat/completions`, https only), then paste your key. It shows "Connected" (with your remaining credit on OpenRouter). For any provider other than OpenRouter, Chrome asks once for permission to reach it. Model names follow each provider (OpenRouter `google/gemini-2.5-flash`, AvalAI `gemini-2.5-flash`); change them under Settings > Advanced. The transcription model must accept audio input and the screenshots model images. Cost per meeting is shown only for OpenRouter.
    2. **Your name in Google Meet:** type it exactly as Meet shows it, and choose your role (PM / non-technical, or Technical).
-   3. **Services folder (Technical only):** choose the folder that holds your services, or skip. It is used only so notes use your real service names. Optional switch **Suggest where to change the code** (Settings): after grooming, planning or technical meetings it searches the folder's code and sends the paths of matching files and short snippets of matching lines (secrets masked; config files by path only) to OpenRouter with the meeting. Off by default.
+   3. **Services folder (Technical only):** choose the folder that holds your services, or skip. It is used only so notes use your real service names. Optional switch **Suggest where to change the code** (Settings): after grooming, planning or technical meetings it searches the folder's code and sends the paths of matching files and short snippets of matching lines (secrets masked; config files by path only) to your AI provider with the meeting. Off by default.
 3. Open a Google Meet tab, pick the meeting type (Grooming, Planning, Technical or Daily), and press **Start recording**. Press **Stop** when the meeting ends.
 4. A notification says when the notes are ready. Open the meeting to see the Summary, AI notes, Transcript and Screens tabs. Copy the summary, open a Gmail draft, or download everything as a .zip. Nothing is sent or emailed unless you click it.
 
-Audio and screenshots go only to OpenRouter to make the notes; everything else stays in your browser, except that with **Suggest where to change the code** switched on, short code snippets (secrets masked) and file paths from your services folder are also sent to OpenRouter. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to OpenRouter to be described. See [docs/privacy-policy.md](docs/privacy-policy.md).
+Audio and screenshots go only to the AI provider you choose to make the notes; everything else stays in your browser, except that with **Suggest where to change the code** switched on, short code snippets (secrets masked) and file paths from your services folder are also sent to that provider. Screenshots are images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to it to be described. See [docs/privacy-policy.md](docs/privacy-policy.md).
 
 ## Local helper mode (advanced)
 

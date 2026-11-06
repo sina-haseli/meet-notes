@@ -7,6 +7,7 @@ import { SERVICES_NOTICE, type PermissionQueryable } from "./servicesSnapshot";
 import { assembleChunk, planChunks, PCM_RATE } from "./audioChunks";
 import { encodeMp3 } from "./mp3";
 import { complete, describeImage, OpenRouterError, transcribeChunk } from "./openrouter";
+import { apiFor } from "./provider";
 import { mergeChunks, parseChunkOutput, renderTranscriptMd, TranscriptParseError } from "./transcript";
 import { assignSpeakers } from "./speakers";
 import { buildNotesPrompt, NOTES_MAX_TOKENS, NotesError, splitNotesOutput, stripCodePaths } from "./notes";
@@ -72,7 +73,8 @@ export function defaultPipelineDeps(settings: () => Promise<Settings>): Pipeline
   };
 }
 
-const MSG_NO_KEY = "Add your OpenRouter key in Settings, then press Retry.";
+const MSG_NO_KEY = "Add your API key in Settings, then press Retry.";
+const MSG_NO_URL = "Enter your AI provider's API address in Settings, then press Retry.";
 const MSG_NOTES = "The notes came back in an unexpected format. Press Retry.";
 
 class FriendlyError extends Error {
@@ -98,10 +100,11 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
     cost = first.costUsd ?? 0;
     await save({ status: "processing", error: undefined, errorDetail: undefined, step });
 
-    // Read at run time so a Retry after fixing Settings uses the new key and models.
+    // Read at run time so a Retry after fixing Settings uses the new provider, key and models.
     const settings = await deps.settings();
-    const key = settings.openrouterKey;
-    if (!key.trim()) throw new FriendlyError(MSG_NO_KEY, "No OpenRouter key set");
+    const api = apiFor(settings);
+    if (!api) throw new FriendlyError(MSG_NO_URL, "No valid API address set");
+    if (!api.key.trim()) throw new FriendlyError(MSG_NO_KEY, "No API key set");
 
     // chunking
     if (!rec!.chunks) {
@@ -124,7 +127,7 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
         const mp3 = deps.encode(pcm);
         let parsed: Turn[] | null = null;
         for (let attempt = 0; attempt < 2 && parsed === null; attempt++) {
-          const { text, cost: c } = await deps.transcribe(key, settings.models.transcribe, mp3);
+          const { text, cost: c } = await deps.transcribe(api, settings.models.transcribe, mp3);
           cost += c;
           try {
             parsed = parseChunkOutput(text, chunk);
@@ -156,7 +159,7 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       const shots = pickEvenly(await db.listScreens(id), MAX_DESCRIBED);
       const described: ScreenDesc[] = [];
       for (const s of shots) {
-        const { text, cost: c } = await deps.describe(key, settings.models.vision, s.blob, DESCRIBE_PROMPT);
+        const { text, cost: c } = await deps.describe(api, settings.models.vision, s.blob, DESCRIBE_PROMPT);
         cost += c;
         described.push({ atMs: s.atMs, description: text });
       }
@@ -181,7 +184,7 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
         } else {
           try {
             const kw = await deps.extractKeywords(
-              key, settings.models.transcribe, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], deps.complete);
+              api, settings.models.transcribe, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], deps.complete);
             cost += kw.cost;
             const found = await deps.searchCode(d.dir, kw.keywords);
             codeSearch = { status: "done", keywords: kw.keywords, services: found.services, limitHit: found.limitHit };
@@ -207,7 +210,7 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       const prompt = buildNotesPrompt(
         rec!, renderTranscriptMd(rec!.turns ?? []), rec!.screens ?? [], rec!.servicesContext, rec!.codeSearch);
       const { text, cost: c } = await deps.complete(
-        key, settings.models.notes, [{ type: "text", text: prompt }], { maxTokens: NOTES_MAX_TOKENS });
+        api, settings.models.notes, [{ type: "text", text: prompt }], { maxTokens: NOTES_MAX_TOKENS });
       cost += c;
       await save({ costUsd: cost });
       try {

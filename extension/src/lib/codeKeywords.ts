@@ -1,4 +1,5 @@
 import type { ScreenDesc } from "../types";
+import type { Api } from "./provider";
 
 export const MAX_KEYWORDS = 12;
 
@@ -39,14 +40,14 @@ export function parseKeywords(raw: string): string[] {
 }
 
 export async function extractKeywords(
-  key: string,
+  api: Api,
   model: string,
   transcriptMd: string,
   screens: ScreenDesc[],
   complete: typeof import("./openrouter").complete,
 ): Promise<{ keywords: string[]; cost: number }> {
   const screenText = screens.length ? "\n\nScreens:\n" + screens.map((s) => `- ${s.description}`).join("\n") : "";
-  const res = await complete(key, model, [
+  const res = await complete(api, model, [
     { type: "text", text: `${KEYWORDS_PROMPT}\n\nTranscript:\n${transcriptMd}${screenText}` },
   ]);
   return { keywords: parseKeywords(res.text), cost: res.cost };

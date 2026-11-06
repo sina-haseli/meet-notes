@@ -43,6 +43,31 @@ describe("settings", () => {
     expect((await getSettings(fake())).codeSuggestions).toBe(false);
     expect((await getSettings(fake({ token: "t", selfName: "S" }))).codeSuggestions).toBe(false);
   });
+  it("defaultsToOpenRouterWithNoKey", async () => {
+    const s = await getSettings(fake());
+    expect(s.provider).toBe("openrouter");
+    expect(s.baseUrl).toBe("");
+    expect(s.apiKey).toBe("");
+  });
+  it("migratesTheOldOpenRouterKey", async () => {
+    const st = fake({ settings: { openrouterKey: "sk-or-v1-old", setupDone: true } });
+    const s = await getSettings(st);
+    expect(s.apiKey).toBe("sk-or-v1-old");
+    expect(s.provider).toBe("openrouter");
+    expect(s).not.toHaveProperty("openrouterKey");
+    await saveSettings({ selfName: "S" }, st);
+    const stored = st.data.settings as Record<string, unknown>;
+    expect(stored.apiKey).toBe("sk-or-v1-old");
+    expect(stored).not.toHaveProperty("openrouterKey");
+  });
+  it("aSavedApiKeyWinsOverTheOldField", async () => {
+    const s = await getSettings(fake({ settings: { openrouterKey: "old", apiKey: "new", provider: "avalai" } }));
+    expect(s.apiKey).toBe("new");
+    expect(s.provider).toBe("avalai");
+  });
+  it("anUnknownProviderFallsBackToOpenRouter", async () => {
+    expect((await getSettings(fake({ settings: { provider: "nope" } }))).provider).toBe("openrouter");
+  });
   it("savedV2WithoutCodeSuggestionsIsFalse", async () => {
     const st = fake({ settings: { setupDone: true, role: "technical", selfName: "S" } });
     expect((await getSettings(st)).codeSuggestions).toBe(false);

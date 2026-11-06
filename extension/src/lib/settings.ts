@@ -1,7 +1,12 @@
 import type { MeetingType } from "../types";
+import { isProviderId, PROVIDERS, type ProviderId } from "./provider";
 
 export interface Settings {
-  openrouterKey: string;
+  /** The AI service; requests go to its address, or to `baseUrl` for "custom". */
+  provider: ProviderId;
+  /** The API address for the "custom" provider (kept when another provider is chosen). */
+  baseUrl: string;
+  apiKey: string;
   selfName: string;
   role: "" | "pm" | "technical";
   servicesFolderName: string;
@@ -14,11 +19,8 @@ export interface Settings {
   codeSuggestions: boolean;
 }
 
-export const DEFAULT_MODELS: Settings["models"] = {
-  transcribe: "google/gemini-2.5-flash",
-  vision: "google/gemini-2.5-flash",
-  notes: "anthropic/claude-sonnet-5.5",
-};
+/** OpenRouter's default models (the default provider). */
+export const DEFAULT_MODELS: Settings["models"] = { ...PROVIDERS.openrouter.models };
 export const HELPER_URL = "http://127.0.0.1:47821";
 
 export interface StorageArea {
@@ -30,7 +32,9 @@ const KEY = "settings";
 
 function defaults(): Settings {
   return {
-    openrouterKey: "",
+    provider: "openrouter",
+    baseUrl: "",
+    apiKey: "",
     selfName: "",
     role: "",
     servicesFolderName: "",
@@ -52,18 +56,23 @@ export async function getSettings(store?: StorageArea): Promise<Settings> {
   const st = area(store);
   const got = await st.get([KEY, "token", "selfName"]);
   const base = defaults();
-  const saved = got[KEY] as Partial<Settings> | undefined;
+  const saved = got[KEY] as (Partial<Settings> & { openrouterKey?: unknown }) | undefined;
   if (!saved) {
     if (typeof got.token === "string") base.helper.token = got.token;
     if (typeof got.selfName === "string") base.selfName = got.selfName;
     return base;
   }
-  return {
+  // Before providers could be chosen, the key was saved as `openrouterKey`.
+  const { openrouterKey, ...rest } = saved;
+  const out: Settings = {
     ...base,
-    ...saved,
+    ...rest,
     models: { ...base.models, ...(saved.models ?? {}) },
     helper: { ...base.helper, ...(saved.helper ?? {}) },
   };
+  if (saved.apiKey === undefined && typeof openrouterKey === "string") out.apiKey = openrouterKey;
+  if (!isProviderId(out.provider)) out.provider = "openrouter";
+  return out;
 }
 
 export async function saveSettings(patch: Partial<Settings>, store?: StorageArea): Promise<Settings> {

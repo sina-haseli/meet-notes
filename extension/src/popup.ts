@@ -5,6 +5,8 @@ import type { Ack, PopupMsg, StatusResponse } from "./messages";
 import { MEETING_PATH, PERMISSION_PATH } from "./messages";
 import { getSettings, saveSettings, type Settings } from "./lib/settings";
 import { checkKey } from "./lib/openrouter";
+import { baseUrlFor, defaultModels, isProviderId, makeApi, PROVIDERS } from "./lib/provider";
+import { hasHostAccess, requestHostAccess } from "./lib/hostAccess";
 import { listMeetings } from "./lib/db";
 import { keyCheckText, nextStep, setupState, type SetupStep } from "./lib/setupFlow";
 import {
@@ -20,7 +22,6 @@ import {
 import { helperMeetingUrl } from "./lib/meetingView";
 
 const MEET_PREFIX = "https://meet.google.com/";
-const KEYS_URL = "https://openrouter.ai/keys";
 const SETTINGS_PATH = "dist/settings.html";
 const MEETINGS_PATH = "dist/meetings.html";
 const KEY_DEBOUNCE_MS = 600;
@@ -71,8 +72,11 @@ let setupStepShown: SetupStep = 1;
 let keySeq = 0;
 let keyTimer: number | undefined;
 let keyOk = false;
+/** "provider|address|key" of the last check, so a reopened popup does not check the same key again. */
 let checkedKey = "";
 
+const providerSel = $<HTMLSelectElement>("provider");
+const baseUrlIn = $<HTMLInputElement>("baseUrl");
 const keyIn = $<HTMLInputElement>("key");
 const keyStatus = $("keyStatus");
 const next1 = $<HTMLButtonElement>("next1");
@@ -90,10 +94,13 @@ function showSetup(step: SetupStep): void {
     .forEach((el, i) => el.classList.toggle("on", i < step));
   for (const n of [1, 2, 3] as const) $(`step${n}`).hidden = n !== step;
   if (step === 1) {
-    keyIn.value = settings.openrouterKey;
-    const key = settings.openrouterKey;
+    providerSel.value = settings.provider;
+    baseUrlIn.value = settings.baseUrl;
+    renderProvider();
+    keyIn.value = settings.apiKey;
+    const key = settings.apiKey;
     if (!key) setKeyStatus("", "hint");
-    else if (!(keyOk && checkedKey === key)) void runKeyCheck(key);
+    else if (!(keyOk && checkedKey === connectionId(key))) void runKeyCheck(key);
     keyIn.focus();
   } else if (step === 2) {
     nameIn.value = settings.selfName;
@@ -102,48 +109,109 @@ function showSetup(step: SetupStep): void {
   }
 }
 
-function setKeyStatus(text: string, kind: "hint" | "ok" | "err", retryKey?: string): void {
+function connectionId(key: string): string {
+  return `${settings.provider}|${baseUrlFor(settings.provider, settings.baseUrl) ?? ""}|${key}`;
+}
+
+/** The address field (Other only), the key placeholder and the "create a key at" hint. */
+function renderProvider(): void {
+  const p = PROVIDERS[settings.provider];
+  $("baseUrlField").hidden = settings.provider !== "custom";
+  keyIn.placeholder = p.keyPlaceholder;
+  const hint = $("keyHint");
+  if (p.keysUrl) {
+    const a = document.createElement("a");
+    a.href = p.keysUrl;
+    a.textContent = p.keysText;
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      openTab(p.keysUrl);
+    });
+    hint.replaceChildren(`Meet Notes uses ${p.label} to write your notes. Create a key at `, a, " and paste it here.");
+  } else {
+    hint.replaceChildren("Any service with an OpenAI-compatible chat API that accepts audio and images. Paste its key here.");
+  }
+}
+
+function setKeyStatus(text: string, kind: "hint" | "ok" | "err", action?: { label: string; run: () => void }): void {
   keyStatus.className = kind === "ok" ? "mn-ok-text" : kind === "err" ? "mn-err-text" : "mn-hint";
   keyStatus.replaceChildren(text);
-  if (retryKey !== undefined) {
+  if (action) {
     const a = document.createElement("a");
     a.href = "#";
     a.className = "mn-link";
-    a.textContent = "Retry";
+    a.textContent = action.label;
     a.addEventListener("click", (e) => {
       e.preventDefault();
-      void runKeyCheck(retryKey);
+      action.run();
     });
     keyStatus.append(" ", a);
   }
   next1.disabled = kind !== "ok";
 }
 
+/** Offers the Allow link that asks Chrome for access to `url`, then checks `key` again. */
+function askAccess(url: string, key: string, text: string): void {
+  setKeyStatus(text, "err", {
+    label: "Allow",
+    run: () =>
+      void requestHostAccess(url).then((ok) => {
+        if (ok) void runKeyCheck(key);
+        else askAccess(url, key, "Permission was not given. Press Allow to try again.");
+      }),
+  });
+}
+
 async function runKeyCheck(key: string): Promise<void> {
   const seq = ++keySeq;
   keyOk = false;
+  const { provider } = settings;
+  const url = baseUrlFor(provider, settings.baseUrl);
+  if (!url) {
+    setKeyStatus("Enter the API address, starting with https://.", "err");
+    return;
+  }
+  if (!(await hasHostAccess(url))) {
+    if (seq === keySeq) askAccess(url, key, `Chrome needs your permission for Meet Notes to reach ${new URL(url).hostname}.`);
+    return;
+  }
   setKeyStatus("Checking your key…", "hint");
-  const res = await checkKey(key);
-  if (seq !== keySeq) return; // the field changed meanwhile
+  const res = await checkKey(makeApi(provider, url, key));
+  if (seq !== keySeq) return; // a field changed meanwhile
   keyOk = res.ok;
-  checkedKey = key;
+  checkedKey = connectionId(key);
   if (res.ok) setKeyStatus(keyCheckText(res), "ok");
-  else setKeyStatus(keyCheckText(res), "err", key);
+  else setKeyStatus(keyCheckText(res), "err", { label: "Retry", run: () => void runKeyCheck(key) });
 }
 
-keyIn.addEventListener("input", () => {
-  const key = keyIn.value.trim(); // a pasted key with a trailing space is stored without it
-  void save({ openrouterKey: key });
+/** Any field of step 1 changed: drop the running check and check again after a pause. */
+function recheckKey(): void {
   keySeq++; // drops any check still in flight
   keyOk = false;
   if (keyTimer !== undefined) clearTimeout(keyTimer);
   setKeyStatus("", "hint");
+  const key = keyIn.value.trim();
   if (key) keyTimer = window.setTimeout(() => void runKeyCheck(key), KEY_DEBOUNCE_MS);
+}
+
+providerSel.addEventListener("change", () => {
+  const v = providerSel.value;
+  if (!isProviderId(v)) return;
+  // Model names differ between providers, so a new provider starts from its own defaults.
+  void save({ provider: v, models: defaultModels(v) });
+  renderProvider();
+  recheckKey();
 });
 
-$("keysLink").addEventListener("click", (e) => {
-  e.preventDefault();
-  openTab(KEYS_URL);
+baseUrlIn.addEventListener("input", () => {
+  void save({ baseUrl: baseUrlIn.value.trim() });
+  recheckKey();
+});
+
+keyIn.addEventListener("input", () => {
+  // a pasted key with a trailing space is stored without it
+  void save({ apiKey: keyIn.value.trim() });
+  recheckKey();
 });
 
 next1.addEventListener("click", () => {

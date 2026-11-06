@@ -38,7 +38,7 @@ function setup(over: Partial<MeetingRecord> = {}, o: {
       listScreens: async () => screens,
     } as any,
     settings: async () => ({
-      openrouterKey: key(), models: { transcribe: "mt", vision: "mv", notes: "mn" }, ...o.settings,
+      provider: "openrouter", baseUrl: "", apiKey: key(), models: { transcribe: "mt", vision: "mv", notes: "mn" }, ...o.settings,
     } as Settings),
     transcribe, describe, complete,
     encode: () => new Blob(["mp3"]),
@@ -126,8 +126,8 @@ describe("processMeeting", () => {
 
   it("retryReadsKeyAtRunTime", async () => {
     let key = "bad";
-    const transcribe = vi.fn(async (k: string) => {
-      if (k === "bad") throw new OpenRouterError("OpenRouter rejected your API key. Check it in Settings, then press Retry.", "401", 401);
+    const transcribe = vi.fn(async (api: { key: string }) => {
+      if (api.key === "bad") throw new OpenRouterError("OpenRouter rejected your API key. Check it in Settings, then press Retry.", "401", 401);
       return { text: ONE_TURN, cost: 0.01 };
     });
     const s = setup({}, { key: () => key, transcribe });
@@ -136,7 +136,7 @@ describe("processMeeting", () => {
     key = "good";
     const second = await processMeeting("m1", s.deps);
     expect(second.status).toBe("ready");
-    expect(transcribe.mock.calls.at(-1)![0]).toBe("good");
+    expect(transcribe.mock.calls.at(-1)![0].key).toBe("good");
   });
 
   it("emptyTranscriptAndNoScreensStillReady", async () => {
@@ -150,11 +150,29 @@ describe("processMeeting", () => {
     expect(s.describe).not.toHaveBeenCalled();
   });
 
+  it("customProviderWithoutAddressFailsWithoutNetwork", async () => {
+    const s = setup({}, { settings: { provider: "custom", baseUrl: "http://not-https.example" } });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("error");
+    expect(out.error).toBe("Enter your AI provider's API address in Settings, then press Retry.");
+    expect(s.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("sendsRequestsToTheChosenProvider", async () => {
+    const s = setup({}, { settings: { provider: "custom", baseUrl: "https://llm.example.com/v1/" } });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(s.transcribe.mock.calls[0][0]).toMatchObject({
+      baseUrl: "https://llm.example.com/v1", key: "k", name: "llm.example.com", openrouter: false,
+    });
+    expect(s.complete.mock.calls[0][0]).toMatchObject({ baseUrl: "https://llm.example.com/v1" });
+  });
+
   it("emptyKeyFailsWithoutNetwork", async () => {
     const s = setup({}, { key: () => "" });
     const out = await processMeeting("m1", s.deps);
     expect(out.status).toBe("error");
-    expect(out.error).toBe("Add your OpenRouter key in Settings, then press Retry.");
+    expect(out.error).toBe("Add your API key in Settings, then press Retry.");
     expect(s.transcribe).not.toHaveBeenCalled();
     expect(s.describe).not.toHaveBeenCalled();
     expect(s.complete).not.toHaveBeenCalled();
@@ -205,7 +223,7 @@ describe("code step", () => {
     expect(out.codeSearch).toEqual({ status: "done", keywords: ["wallet"], services: MASERATI.services, limitHit: false });
     expect(s.extractKeywords).toHaveBeenCalledTimes(1);
     const args = s.extractKeywords.mock.calls[0] as any[];
-    expect(args[0]).toBe("k");
+    expect(args[0]).toMatchObject({ key: "k", baseUrl: "https://openrouter.ai/api/v1" });
     expect(args[1]).toBe("mt");
     expect(args[4]).toBe(s.complete);
     expect(s.searchCode).toHaveBeenCalledWith(DIR, ["wallet"]);

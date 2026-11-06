@@ -1,5 +1,7 @@
-// The Settings page: key, name/role, services folder, Advanced (models, local helper), storage.
-import { getSettings, saveSettings, DEFAULT_MODELS, type Settings } from "./lib/settings";
+// The Settings page: AI provider & key, name/role, services folder, Advanced (models, local helper), storage.
+import { getSettings, saveSettings, type Settings } from "./lib/settings";
+import { baseUrlFor, defaultModels, isProviderId, makeApi, normalizeBaseUrl, PROVIDERS, type ProviderId } from "./lib/provider";
+import { hasHostAccess, requestHostAccess } from "./lib/hostAccess";
 import { checkKey } from "./lib/openrouter";
 import { checkKeyThenSave, keyCheckText, setupState } from "./lib/setupFlow";
 import { putHandle, getHandle, deleteHandle, listMeetings, deleteMeeting } from "./lib/db";
@@ -38,64 +40,170 @@ function syncSetupDone(): Promise<void> {
   return done === settings.setupDone ? Promise.resolve() : save({ setupDone: done });
 }
 
-// ---------- key ----------
+// ---------- AI provider & key ----------
 
 let keySeq = 0;
 let keyTimer: number | undefined;
+/** The provider being picked. It is saved, with its key, only once that key checks out. */
+let draft: { provider: ProviderId; baseUrl: string };
+
+const providerSel = $<HTMLSelectElement>("provider");
+const baseUrlIn = $<HTMLInputElement>("baseUrl");
+const keyIn = $<HTMLInputElement>("key");
+
+function draftIsSaved(): boolean {
+  return (
+    draft.provider === settings.provider &&
+    (draft.provider !== "custom" || normalizeBaseUrl(draft.baseUrl) === normalizeBaseUrl(settings.baseUrl))
+  );
+}
 
 function renderKey(): void {
-  const k = settings.openrouterKey;
-  $("keyMasked").textContent = k ? `sk-or-…${k.slice(-4)}` : "No key yet";
+  const k = settings.apiKey;
+  $("keyMasked").textContent = k ? `••••${k.slice(-4)}` : "No key yet";
   $("keyChange").textContent = k ? "Change" : "Add key";
 }
 
-function setKeyStatus(text: string, kind: "hint" | "ok" | "err", retryKey?: string): void {
+function renderProvider(): void {
+  providerSel.value = draft.provider;
+  $("baseUrlField").hidden = draft.provider !== "custom";
+  if (baseUrlIn.value.trim() !== draft.baseUrl) baseUrlIn.value = draft.baseUrl;
+  const p = PROVIDERS[draft.provider];
+  keyIn.placeholder = p.keyPlaceholder;
+  const hint = $("keyHint");
+  if (p.keysUrl) {
+    const a = document.createElement("a");
+    a.href = p.keysUrl;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = p.keysText;
+    hint.replaceChildren("Create a key at ", a, ".");
+  } else {
+    hint.replaceChildren("Use the API key your provider gave you.");
+  }
+}
+
+function setKeyStatus(text: string, kind: "hint" | "ok" | "err", action?: { label: string; run: () => void }): void {
   const el = $("keyStatus");
   el.className = `msg ${kind === "ok" ? "mn-ok-text" : kind === "err" ? "mn-err-text" : "mn-hint"}`;
   el.replaceChildren(text);
-  if (retryKey !== undefined) {
+  if (action) {
     const a = document.createElement("a");
     a.href = "#";
     a.className = "mn-link";
-    a.textContent = "Retry";
+    a.textContent = action.label;
     a.addEventListener("click", (e) => {
       e.preventDefault();
-      void runKeyCheck(retryKey);
+      action.run();
     });
     el.append(" ", a);
   }
 }
 
-/** Checks `key`; only a key that checks out replaces the saved one. */
+/** Offers the Allow link that asks Chrome for access to `url`, then checks `key` again. */
+function askAccess(url: string, key: string, text: string): void {
+  setKeyStatus(text, "err", {
+    label: "Allow",
+    run: () =>
+      void requestHostAccess(url).then((ok) => {
+        if (ok) void runKeyCheck(key);
+        else askAccess(url, key, "Permission was not given. Press Allow to try again.");
+      }),
+  });
+}
+
+/** Checks `key` against the picked provider; only a key that checks out replaces the saved one. */
 async function runKeyCheck(key: string): Promise<void> {
   const seq = ++keySeq;
+  const { provider } = draft;
+  const url = baseUrlFor(provider, draft.baseUrl);
+  if (!url) {
+    setKeyStatus("Enter the API address, starting with https://.", "err");
+    return;
+  }
+  if (!(await hasHostAccess(url))) {
+    if (seq === keySeq) askAccess(url, key, `Chrome needs your permission for Meet Notes to reach ${new URL(url).hostname}.`);
+    return;
+  }
   setKeyStatus("Checking your key…", "hint");
-  const res = await checkKeyThenSave(key, checkKey, () => seq === keySeq, async (k) => {
-    await save({ openrouterKey: k });
+  const res = await checkKeyThenSave(key, (k) => checkKey(makeApi(provider, url, k)), () => seq === keySeq, async (k) => {
+    const changed = provider !== settings.provider;
+    await save({
+      provider,
+      apiKey: k,
+      ...(provider === "custom" ? { baseUrl: url } : {}),
+      ...(changed ? { models: defaultModels(provider) } : {}),
+    });
+    draft = { provider: settings.provider, baseUrl: settings.baseUrl };
     renderKey();
+    renderProvider();
+    renderModels();
     await syncSetupDone();
   });
-  if (!res) return; // superseded by a newer key
+  if (!res) return; // superseded by a newer key or provider
   if (res.ok) setKeyStatus(keyCheckText(res), "ok");
-  else setKeyStatus(`${keyCheckText(res)}${settings.openrouterKey ? " Your saved key was not changed." : ""}`, "err", key);
+  else {
+    const kept = settings.apiKey ? " Your saved provider and key were not changed." : "";
+    setKeyStatus(`${keyCheckText(res)}${kept}`, "err", { label: "Retry", run: () => void runKeyCheck(key) });
+  }
 }
+
+function scheduleKeyCheck(key: string): void {
+  if (keyTimer !== undefined) clearTimeout(keyTimer);
+  keyTimer = window.setTimeout(() => void runKeyCheck(key), KEY_DEBOUNCE_MS);
+}
+
+/** After the provider or address changed: ask for a key, or go back to the saved connection. */
+function onDraftChanged(): void {
+  keySeq++; // drops any check still in flight
+  if (keyTimer !== undefined) clearTimeout(keyTimer);
+  if (draftIsSaved() && settings.apiKey) {
+    $("keyEdit").hidden = true;
+    keyIn.value = "";
+    setKeyStatus("", "hint");
+    return;
+  }
+  $("keyEdit").hidden = false;
+  // A new address for the same custom provider is tried with the saved key until another is typed.
+  const key = keyIn.value.trim() || (draft.provider === settings.provider ? settings.apiKey : "");
+  if (key) {
+    setKeyStatus("", "hint");
+    scheduleKeyCheck(key);
+  } else {
+    const kept = settings.apiKey ? " Your current provider and key are kept until the new key is checked." : "";
+    setKeyStatus(`Paste your ${PROVIDERS[draft.provider].label} key.${kept}`, "hint");
+    keyIn.focus();
+  }
+}
+
+providerSel.addEventListener("change", () => {
+  const v = providerSel.value;
+  if (!isProviderId(v)) return;
+  draft = { provider: v, baseUrl: draft.baseUrl || settings.baseUrl };
+  renderProvider();
+  onDraftChanged();
+});
+
+baseUrlIn.addEventListener("input", () => {
+  draft = { ...draft, baseUrl: baseUrlIn.value.trim() };
+  onDraftChanged();
+});
 
 $("keyChange").addEventListener("click", () => {
   $("keyEdit").hidden = false;
-  const input = $<HTMLInputElement>("key");
-  input.value = "";
-  input.focus();
+  keyIn.value = "";
+  keyIn.focus();
   setKeyStatus("Paste the new key. The old one is kept until the new one is checked.", "hint");
 });
 
-$<HTMLInputElement>("key").addEventListener("input", (e) => {
-  const key = (e.target as HTMLInputElement).value.trim();
+keyIn.addEventListener("input", () => {
+  const key = keyIn.value.trim();
   keySeq++;
   if (keyTimer !== undefined) clearTimeout(keyTimer);
   setKeyStatus("", "hint");
   if (!key) return;
   // Saved only once the check passes (runKeyCheck): the old key stays until then.
-  keyTimer = window.setTimeout(() => void runKeyCheck(key), KEY_DEBOUNCE_MS);
+  scheduleKeyCheck(key);
 });
 
 // ---------- name & role ----------
@@ -219,6 +327,10 @@ $("allowFolder").addEventListener("click", async () => {
 const MODEL_FIELDS = { transcribe: "mTranscribe", vision: "mVision", notes: "mNotes" } as const;
 type ModelKey = keyof typeof MODEL_FIELDS;
 
+function renderModels(): void {
+  for (const k of Object.keys(MODEL_FIELDS) as ModelKey[]) $<HTMLInputElement>(MODEL_FIELDS[k]).value = settings.models[k];
+}
+
 for (const k of Object.keys(MODEL_FIELDS) as ModelKey[]) {
   const input = $<HTMLInputElement>(MODEL_FIELDS[k]);
   input.addEventListener("input", () => {
@@ -228,16 +340,18 @@ for (const k of Object.keys(MODEL_FIELDS) as ModelKey[]) {
   input.addEventListener("blur", () => {
     // An empty field falls back to the default rather than saving nothing.
     if (!input.value.trim()) {
-      input.value = DEFAULT_MODELS[k];
-      void save({ models: { ...settings.models, [k]: DEFAULT_MODELS[k] } });
+      const d = defaultModels(settings.provider)[k];
+      input.value = d;
+      void save({ models: { ...settings.models, [k]: d } });
     }
   });
 }
 document.querySelectorAll<HTMLButtonElement>("button[data-reset]").forEach((b) =>
   b.addEventListener("click", () => {
     const k = b.dataset.reset as ModelKey;
-    $<HTMLInputElement>(MODEL_FIELDS[k]).value = DEFAULT_MODELS[k];
-    void save({ models: { ...settings.models, [k]: DEFAULT_MODELS[k] } });
+    const d = defaultModels(settings.provider)[k];
+    $<HTMLInputElement>(MODEL_FIELDS[k]).value = d;
+    void save({ models: { ...settings.models, [k]: d } });
   }),
 );
 
@@ -299,11 +413,13 @@ twoClick($<HTMLButtonElement>("deleteAll"), "Delete all meetings", "Click again 
 
 async function init(): Promise<void> {
   settings = await getSettings();
+  draft = { provider: settings.provider, baseUrl: settings.baseUrl };
+  renderProvider();
   renderKey();
-  $("keyEdit").hidden = settings.openrouterKey !== "";
+  $("keyEdit").hidden = settings.apiKey !== "";
   $<HTMLInputElement>("name").value = settings.selfName;
   renderRole();
-  for (const k of Object.keys(MODEL_FIELDS) as ModelKey[]) $<HTMLInputElement>(MODEL_FIELDS[k]).value = settings.models[k];
+  renderModels();
   helperOn.checked = settings.helper.enabled;
   helperUrl.value = settings.helper.url;
   helperToken.value = settings.helper.token;

@@ -4,7 +4,9 @@ import { DEFAULT_MODELS, HELPER_URL, type Settings } from "../src/lib/settings";
 
 function settings(patch: Partial<Settings> = {}): Settings {
   return {
-    openrouterKey: "",
+    provider: "openrouter",
+    baseUrl: "",
+    apiKey: "",
     selfName: "",
     role: "",
     servicesFolderName: "",
@@ -23,24 +25,30 @@ describe("setupFlow", () => {
   it("emptyIsStep1", () => {
     expect(setupState(settings())).toEqual({ done: false, step: 1 });
   });
+  it("customProviderNeedsAUsableAddress", () => {
+    expect(setupState(settings({ provider: "custom", apiKey: "k", baseUrl: "" })).step).toBe(1);
+    expect(setupState(settings({ provider: "custom", apiKey: "k", baseUrl: "http://x.example" })).step).toBe(1);
+    expect(setupState(settings({ provider: "custom", apiKey: "k", baseUrl: "https://x.example/v1" })).step).toBe(2);
+    expect(setupState(settings({ provider: "avalai", apiKey: "k" })).step).toBe(2);
+  });
 
   it("keyOnlyIsStep2", () => {
-    expect(setupState(settings({ openrouterKey: "sk-or-v1-abc" }))).toEqual({ done: false, step: 2 });
+    expect(setupState(settings({ apiKey: "sk-or-v1-abc" }))).toEqual({ done: false, step: 2 });
     // A blank key is not a key.
-    expect(setupState(settings({ openrouterKey: "   " })).step).toBe(1);
+    expect(setupState(settings({ apiKey: "   " })).step).toBe(1);
   });
 
   it("nameWithoutRoleIsStillStep2", () => {
-    expect(setupState(settings({ openrouterKey: "k", selfName: "Sina" }))).toEqual({ done: false, step: 2 });
+    expect(setupState(settings({ apiKey: "k", selfName: "Sina" }))).toEqual({ done: false, step: 2 });
   });
 
   it("pmDoneWithoutFolder", () => {
-    const s = settings({ openrouterKey: "k", selfName: "Sina", role: "pm" });
+    const s = settings({ apiKey: "k", selfName: "Sina", role: "pm" });
     expect(setupState(s).done).toBe(true);
   });
 
   it("technicalNeedsFolderOrSkip", () => {
-    const base = settings({ openrouterKey: "k", selfName: "Sina", role: "technical" });
+    const base = settings({ apiKey: "k", selfName: "Sina", role: "technical" });
     expect(setupState(base)).toEqual({ done: false, step: 3 });
     expect(setupState({ ...base, servicesSkipped: true }).done).toBe(true);
     expect(setupState({ ...base, servicesFolderName: "services" }).done).toBe(true);
@@ -56,9 +64,9 @@ describe("setupFlow", () => {
   });
 
   it("resumesSavedStep", () => {
-    expect(setupState(settings({ openrouterKey: "k", setupStep: 2 }))).toEqual({ done: false, step: 2 });
+    expect(setupState(settings({ apiKey: "k", setupStep: 2 }))).toEqual({ done: false, step: 2 });
     // Step 3 is kept while it is still valid (key, name, technical role).
-    const s3 = settings({ openrouterKey: "k", selfName: "Sina", role: "technical", setupStep: 3 });
+    const s3 = settings({ apiKey: "k", selfName: "Sina", role: "technical", setupStep: 3 });
     expect(setupState(s3).step).toBe(3);
   });
 
@@ -66,7 +74,7 @@ describe("setupFlow", () => {
     // The key was removed later: back to step 1 even though step 3 was saved.
     expect(setupState(settings({ selfName: "Sina", role: "technical", setupStep: 3 })).step).toBe(1);
     // Step 3 saved, then the role changed to PM: step 3 doesn't exist for PMs.
-    expect(setupState(settings({ openrouterKey: "k", role: "pm", setupStep: 3 })).step).toBe(2);
+    expect(setupState(settings({ apiKey: "k", role: "pm", setupStep: 3 })).step).toBe(2);
   });
 });
 
