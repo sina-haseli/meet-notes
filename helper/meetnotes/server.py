@@ -193,6 +193,10 @@ def create_app(cfg: Config, run_pipeline=process_meeting, send=send_meeting) -> 
     def index():
         return page("index.html")
 
+    @app.get("/pair", response_class=HTMLResponse)
+    def pair_page():
+        return page("pair.html")
+
     @app.get("/meetings/{mid}", response_class=HTMLResponse)
     def meeting_page(mid: str):
         return page("meeting.html")

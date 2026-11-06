@@ -1,5 +1,23 @@
 # Meet Notes
 
+Records a Google Meet meeting (Persian speech with English technical terms) and turns it into a Persian summary, English notes and a transcript. It runs entirely in Chrome with your own OpenRouter key. No account, no server and nothing to install besides the extension.
+
+## Install from the Chrome Web Store / first run
+
+1. Install **Meet Notes** from the Chrome Web Store and pin it to the toolbar.
+2. Open the extension and follow the 3 setup steps:
+   1. **OpenRouter key:** paste your key (get one at openrouter.ai/keys). It shows "Connected" and your remaining credit.
+   2. **Your name in Google Meet:** type it exactly as Meet shows it, and choose your role (PM / non-technical, or Technical).
+   3. **Services folder (Technical only):** choose the folder that holds your services, or skip. It is used only so notes use your real service names.
+3. Open a Google Meet tab, pick the meeting type (Grooming, Planning, Technical or Daily), and press **Start recording**. Press **Stop** when the meeting ends.
+4. A notification says when the notes are ready. Open the meeting to see the Summary, AI notes, Transcript and Screens tabs. Copy the summary, open a Gmail draft, or download everything as a .zip. Nothing is sent or emailed unless you click it.
+
+Audio and screenshots go only to OpenRouter to make the notes; everything else stays in your browser. See [docs/privacy-policy.md](docs/privacy-policy.md).
+
+## Local helper mode (advanced)
+
+Optional and off by default. Instead of processing in the browser, the extension can upload to a local Python helper that does everything and serves its own review page. Turn it on in the extension under Settings, Advanced, Local helper.
+
 Records a Google Meet meeting (Persian speech with English technical terms), turns it into a transcript and structured notes, shows them on a review page, and emails them only when you press **Send**.
 
 Two parts:
@@ -11,7 +29,7 @@ Data leaves your PC only to OpenRouter (audio and screenshots), Anthropic (throu
 
 Outputs per meeting, in `D:\meeting-notes\YYYY-MM-DD_<type>_<slug>\`: `transcript.md` (as spoken), `notes.md` (English), `email.md` (Persian, English terms kept), screenshots, `meta.json` (including `cost_usd`). `audio.webm` and `chunks/` are deleted after a successful send.
 
-## Prerequisites
+### Prerequisites
 
 - Windows, Chrome.
 - Python 3.12 (3.11 also works).
@@ -20,7 +38,7 @@ Outputs per meeting, in `D:\meeting-notes\YYYY-MM-DD_<type>_<slug>\`: `transcrip
 - An OpenRouter API key with some credit.
 - ffmpeg is NOT required. It comes bundled through `imageio-ffmpeg` (a `ffmpeg` on PATH is used if you have one).
 
-## Helper setup
+### Helper setup
 
 ```powershell
 cd D:\projects\persian_transacribe\helper
@@ -35,7 +53,7 @@ The first run creates `%APPDATA%\meetnotes\config.toml` with a random `token`. S
 
 | Field | Default | Meaning |
 |---|---|---|
-| `token` | random, generated | Shared secret. Every `/api/*` call must send it; paste it into the extension popup. |
+| `token` | random, generated | Shared secret. Every `/api/*` call must send it; paste it into the extension (see Connect below). |
 | `notes_root` | `D:\meeting-notes` | Where meeting folders are created. |
 | `repos` | `["D:\\kifepool"]` | Repo folders Claude Code may read to normalise service/module names in the notes. They are used only for names; nothing is added from them. |
 | `openrouter_api_key` | `""` | Your OpenRouter key. **Required.** |
@@ -50,7 +68,7 @@ The first run creates `%APPDATA%\meetnotes\config.toml` with a random `token`. S
 
 Use forward slashes or doubled backslashes in paths (`"D:/meeting-notes"` or `"D:\\meeting-notes"`).
 
-## Gmail setup
+### Gmail setup
 
 Default method is the Gmail API (OAuth):
 
@@ -69,7 +87,7 @@ mail_from = "you@gmail.com"
 smtp_app_password = "xxxx xxxx xxxx xxxx"
 ```
 
-## Extension setup
+### Extension setup
 
 ```powershell
 cd D:\projects\persian_transacribe\extension
@@ -79,9 +97,9 @@ npm run build
 
 Then in Chrome: `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, choose the `extension\` folder. Rebuild (`npm run build`) and press the reload icon on the extension card after any change.
 
-Open the extension popup, expand **Settings**, paste the helper **token** from `config.toml` and your **name**, and Save. **"Your name" must match your Meet display name exactly** (same spelling, spaces and letters): it labels your own microphone in the speaker log, and a different spelling shows up as a second person. The first time you press Start, a page asks for microphone permission. Allow it, go back to the Meet tab, and press Start again.
+In the extension, open Settings, Advanced, **Local helper**, turn it on and press **Connect**. That opens `http://127.0.0.1:47821/pair`, which shows the token with a **Copy** button; paste it into the Token field. (You can still copy it from `config.toml`.) Set your **name** in Settings too. **"Your name" must match your Meet display name exactly** (same spelling, spaces and letters): it labels your own microphone in the speaker log, and a different spelling shows up as a second person. The first time you press Start, a page asks for microphone permission. Allow it, go back to the Meet tab, and press Start again.
 
-## Daily use
+### Daily use
 
 1. Make sure the helper is running (see Auto-start below).
 2. In a Meet tab, open the popup, pick the meeting type (`grooming`, `planning` or `technical`), optionally type a title, press **Start**.
@@ -89,7 +107,7 @@ Open the extension popup, expand **Settings**, paste the helper **token** from `
 4. The review page opens when processing finishes (a few minutes for an hour-long meeting). Check the three tabs (notes, email, transcript), rename speakers (`Speaker 2` to a real name; this updates all three tabs), and edit anything that is wrong.
 5. Enter the recipients and press **Send**. Nothing is sent before that.
 
-## Choosing the transcription model
+### Choosing the transcription model
 
 `helper/scripts/bench_models.py` transcribes the first two chunks (about 10 minutes) of a recorded meeting with each model you list, so you can compare accuracy and cost on your own voice and vocabulary.
 
@@ -105,7 +123,7 @@ Take the model ids from openrouter.ai (audio-input models). It prints a table wi
 
 To pick one: read the `bench\*.md` files side by side and compare Persian accuracy, whether English terms stay in Latin script, and speaker separation. Reject any with `parse_ok = no`. Keep cost under the target of $0.50 per meeting hour (the benchmark covers about 10 minutes, so multiply `cost_usd` by 6 for an hour). Then set `transcribe_model` in `config.toml` and restart the helper.
 
-## Auto-start
+### Auto-start
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File D:\projects\persian_transacribe\helper\scripts\install-startup.ps1
@@ -115,7 +133,7 @@ This creates `Meet Notes Helper.lnk` in your Startup folder (`shell:startup`), w
 
 The helper always writes its log to `%APPDATA%\meetnotes\helper.log`. With no console window, that file is the only place errors show up.
 
-## First real-meeting checklist
+### First real-meeting checklist
 
 None of this has been run against a live Meet, OpenRouter or Gmail yet. Do it once with a short test meeting (a second device or colleague).
 
@@ -150,7 +168,7 @@ The Meet page markup is not documented and changes, so the selectors are best gu
 2. The email arrives with right-to-left Persian HTML, `notes.md` attached, and the referenced screenshots attached.
 3. Afterwards `audio.webm` and `chunks\` are gone and `meta.json` has `status: "sent"` and a `cost_usd` value.
 
-## Troubleshooting
+### Troubleshooting
 
 - **Popup says "Upload failed - Retry":** the helper was not reachable, or it rejected the upload. In the second case the message shows the helper's reason (e.g. `HTTP 401: invalid or missing token`), and rejected uploads are not retried automatically. Fix the cause (start the helper, fix the token), then press Retry; the recording is kept in memory until it uploads. If the recording is lost (browser closed), the popup says so.
 - **The upload keeps failing and you need to record the next meeting:** press **Save audio & discard** under the error, then press it again to confirm. The audio is saved to your Downloads folder as `meet-notes-<start time>.webm`, the popup shows the full path, and the extension is ready to record again. The speaker log and screenshots of that recording are dropped.
@@ -161,6 +179,18 @@ The Meet page markup is not documented and changes, so the selectors are best gu
 - **OpenRouter errors (HTTP 401/402):** check `openrouter_api_key` and your credit. The meeting shows the error; retry from the review page.
 - **Voice labels like "Speaker 2" instead of names:** the Meet selectors are not matching (Meet changed its markup). Rename the speakers on the review page for this meeting, and fix the selectors using the checklist above.
 - **Gmail consent or send fails:** make sure `gmail_client.json` is a Desktop-app client in `%APPDATA%\meetnotes\` and your address is a test user. Deleting `gmail_token.json` redoes consent (an expired token is handled automatically), or switch to `mail_method = "smtp"`.
+
+## Publishing
+
+The steps for the Chrome Web Store are in section 10 of [docs/superpowers/specs/2026-11-06-meet-notes-store-design.md](docs/superpowers/specs/2026-11-06-meet-notes-store-design.md). The listing text, permission justifications and screenshot checklist are in [docs/store-listing.md](docs/store-listing.md). To build the upload:
+
+```powershell
+cd extension
+npm install
+npm run package
+```
+
+This builds and writes `extension/meet-notes-<version>.zip` (manifest, `dist/`, `icons/`, `THIRD_PARTY_NOTICES.md`). Icons are regenerated with `node scripts/make-icons.mjs`.
 
 ## Development
 

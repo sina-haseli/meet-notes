@@ -267,3 +267,13 @@ def test_upload_allows_many_screens_and_large_string_log(client, upload_files, c
     d = cfg.notes_root / r.json()["id"]
     assert len(list((d / "screens").iterdir())) == 1200
     assert len(json.loads((d / "speaker_log.json").read_text(encoding="utf-8"))) == 40000
+
+
+def test_pair_page_shows_token_with_copy(client):
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert TOKEN in r.text
+    assert "__TOKEN__" not in r.text
+    assert "navigator.clipboard.writeText" in r.text
+    assert "Meet Notes helper is running" in r.text
+    assert client.get("/pair", headers={"Host": "evil.example"}).status_code == 400
