@@ -30,11 +30,20 @@ const UI_STRINGS = new Set([
   "more options", "host", "(you)", "visual effects", "remove", "dismiss",
 ]);
 const MAX_NAME_LEN = 100;
+// Meet draws icons as icon-font ligatures: the element's text IS the icon name ("visual_effects",
+// "keep_off", "more_vert"), usually with class notranslate — which the loose ".notranslate" name
+// strategy matches. Seen live on 2026-11-06: those icon names were logged as speakers.
+const ICON_ELEMENT = "i, [aria-hidden='true'], .material-icons, .material-icons-extended, .material-symbols-outlined, .google-material-icons, .google-symbols";
+const ICON_LIGATURE = /^[a-z0-9]+(?:_[a-z0-9]+)+$/;
 
 function cleanName(raw: string | null | undefined): string | null {
   const s = (raw ?? "").replace(/\s+/g, " ").trim();
-  if (!s || s.length > MAX_NAME_LEN || UI_STRINGS.has(s.toLowerCase())) return null;
+  if (!s || s.length > MAX_NAME_LEN || UI_STRINGS.has(s.toLowerCase()) || ICON_LIGATURE.test(s)) return null;
   return s;
+}
+
+function isIcon(el: Element): boolean {
+  return el.closest(ICON_ELEMENT) !== null;
 }
 
 function tiles(root: Document): Element[] {
@@ -50,6 +59,7 @@ function nameOf(tile: Element): string | null {
       if (n) return n;
     } else {
       for (const el of tile.querySelectorAll(strat)) {
+        if (isIcon(el)) continue;
         const n = cleanName(el.textContent);
         if (n) return n;
       }

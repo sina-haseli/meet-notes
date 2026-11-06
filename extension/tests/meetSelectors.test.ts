@@ -36,6 +36,28 @@ test("speaking via indicator class strategy and tile attribute strategy", () => 
   expect(getSpeakingNames(doc)).toEqual(new Set(["Ali", "Bita"]));
 });
 
+test("icon glyph text is never a name (live Meet 2026-11-06: visual_effects / keep_off)", () => {
+  const doc = load(`
+    <div data-participant-id="a" data-is-speaking="true">
+      <i class="google-material-icons notranslate" aria-hidden="true">visual_effects</i>
+      <span class="google-symbols notranslate">keep_off</span>
+      <div class="zWGUib">Sina Haseli</div>
+    </div>
+    <div data-participant-id="b">
+      <span class="notranslate">more_vert</span>
+      <span class="notranslate">mic_off</span>
+    </div>`);
+  expect(getParticipantNames(doc)).toEqual(["Sina Haseli"]);
+  expect(getSpeakingNames(doc)).toEqual(new Set(["Sina Haseli"]));
+});
+
+test("an icon ligature in a name attribute or plain element is rejected too", () => {
+  const doc = load(`
+    <div data-participant-id="a"><span data-self-name="keep_off"></span><div class="notranslate">Reza</div></div>
+    <div data-participant-id="b"><div aria-hidden="true"><span class="notranslate">Ghost</span></div></div>`);
+  expect(getParticipantNames(doc)).toEqual(["Reza"]);
+});
+
 test("name falls back to a name-element text; UI strings are ignored", () => {
   const doc = load(`
     <div data-participant-id="a"><div class="zWGUib">Dana</div></div>

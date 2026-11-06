@@ -25,6 +25,7 @@ import { readServicesContext } from "./lib/servicesContext";
 import type { Settings } from "./lib/settings";
 import { defaultPipelineDeps, processMeeting } from "./lib/pipeline";
 import { isOffscreenIdle } from "./lib/offscreenIdle";
+import { mergeSpeakerLogs } from "./lib/speakerLogMerge";
 
 const THUMB_W = 64;
 const THUMB_H = 36;
@@ -505,7 +506,7 @@ async function stopHelper(msg: Extract<ToOffscreen, { type: "stop" }>): Promise<
   rec = null;
   try {
     const { audio, selfLog, screens } = await stopRecording(r);
-    pending = { meta: msg.meta, log: mergeLogs(msg.log, selfLog), audio, screens };
+    pending = { meta: msg.meta, log: mergeSpeakerLogs(msg.log, selfLog, msg.meta.participants), audio, screens };
   } catch (e) {
     // Salvage whatever audio was recorded so it can still be uploaded.
     if (r.chunks.length === 0) {
@@ -519,7 +520,7 @@ async function stopHelper(msg: Extract<ToOffscreen, { type: "stop" }>): Promise<
     }
     pending = {
       meta: msg.meta,
-      log: mergeLogs(msg.log, selfLog),
+      log: mergeSpeakerLogs(msg.log, selfLog, msg.meta.participants),
       audio: new Blob(r.chunks, { type: "audio/webm" }),
       screens: r.screens,
     };
@@ -537,7 +538,7 @@ async function stopBuiltin(msg: Extract<ToOffscreen, { type: "stop-builtin" }>):
   const snap = await takeServicesSnapshot();
   try {
     await updateMeeting(p.meetingId, {
-      speakerLog: mergeLogs(msg.log, selfLog),
+      speakerLog: mergeSpeakerLogs(msg.log, selfLog, msg.participants),
       participants: msg.participants,
       pcmSamples: p.pcmSamples,
       durationMs: Math.round(p.pcmSamples / (PCM_RATE / 1000)),
@@ -553,9 +554,6 @@ async function stopBuiltin(msg: Extract<ToOffscreen, { type: "stop-builtin" }>):
   return { ok: true };
 }
 
-function mergeLogs(a: SpeakerInterval[], b: SpeakerInterval[]): SpeakerInterval[] {
-  return [...a, ...b].sort((x, y) => x.start_ms - y.start_ms || x.name.localeCompare(y.name));
-}
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg !== "object" || msg.target !== "offscreen") return false;
