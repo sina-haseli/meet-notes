@@ -7,6 +7,8 @@ export const UPLOAD_URL = "http://127.0.0.1:47821/api/meetings";
 /** Paths relative to the extension root (where manifest.json lives); build.mjs writes them to dist/. */
 export const OFFSCREEN_PATH = "dist/offscreen.html";
 export const PERMISSION_PATH = "dist/permission.html";
+/** The meeting page; opened as `${MEETING_PATH}?id=<meeting id>`. */
+export const MEETING_PATH = "dist/meeting.html";
 
 // ---- popup -> background (no `target` field) ----
 export interface StartMsg {
@@ -21,7 +23,13 @@ export type PopupMsg =
   | { type: "stop" }
   | { type: "status" }
   | { type: "retry-upload" }
-  | { type: "save-discard" };
+  | { type: "save-discard" }
+  /** Built-in: process an `interrupted` meeting from the audio saved so far. */
+  | { type: "process-saved"; meetingId: string }
+  /** Built-in: process an `error` meeting again (resumes where it failed). */
+  | { type: "retry-meeting"; meetingId: string }
+  /** Deletes a meeting and its audio; refused while it is recording or processing. */
+  | { type: "delete-meeting"; meetingId: string };
 
 export interface StatusResponse {
   state: RecState;
@@ -40,18 +48,17 @@ export interface Ack {
 
 // ---- background -> offscreen ----
 export type ToOffscreen =
-  | {
-      target: "offscreen";
-      type: "start";
-      streamId: string;
-      selfName: string;
-      /** Built-in mode: the meeting record (created by the background) that receives the audio. */
-      meetingId?: string;
-      /** True in built-in mode (persist to IndexedDB); missing or false = helper mode, v1 behaviour. */
-      persist?: boolean;
-    }
-  | { target: "offscreen"; type: "stop"; meta: UploadMeta; log: SpeakerInterval[]; token: string }
-  | { target: "offscreen"; type: "retry-upload"; token: string }
+  /**
+   * Built-in mode (persist true): the audio goes to IndexedDB under `meetingId`, a record the
+   * background created first. Helper mode (persist false): v1 behaviour, kept in memory for upload.
+   */
+  | ({ target: "offscreen"; type: "start"; streamId: string; selfName: string } & (
+      | { persist: true; meetingId: string }
+      | { persist: false }
+    ))
+  /** Helper mode. `url` is the helper's upload endpoint, `token` its pairing token. */
+  | { target: "offscreen"; type: "stop"; meta: UploadMeta; log: SpeakerInterval[]; token: string; url: string }
+  | { target: "offscreen"; type: "retry-upload"; token: string; url: string }
   | { target: "offscreen"; type: "export-audio" }
   | { target: "offscreen"; type: "stop-builtin"; meetingId: string; log: SpeakerInterval[]; participants: string[] }
   | { target: "offscreen"; type: "process"; meetingId: string };

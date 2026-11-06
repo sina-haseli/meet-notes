@@ -384,13 +384,13 @@ function release(r: Recording): void {
 
 // ---------- upload ----------
 
-async function upload(token: string): Promise<void> {
+async function upload(token: string, url: string): Promise<void> {
   const p = pending;
   if (!p || uploading) return;
   uploading = true;
   try {
     const form = buildUploadForm(p.meta, p.log, p.audio, p.screens);
-    const { id } = await uploadWithRetry(form, UPLOAD_URL, token);
+    const { id } = await uploadWithRetry(form, url || UPLOAD_URL, token);
     pending = null; // only now is the recording released
     report({ target: "background", type: "upload-result", ok: true, id });
   } catch (e) {
@@ -444,8 +444,7 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
     case "start": {
       if (rec) return { ok: false, error: "Already recording." };
       if (pending) return { ok: false, error: "A previous recording has not been uploaded yet." };
-      // A missing `persist` (the v1 start) means helper mode.
-      const meetingId = msg.persist === true ? (msg.meetingId ?? "") : null;
+      const meetingId = msg.persist ? msg.meetingId : null;
       if (meetingId === "") return { ok: false, error: "Could not start capture: no meeting to record into." };
       try {
         const t0 = await startRecording(msg.streamId, msg.selfName, meetingId);
@@ -459,7 +458,7 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
     case "retry-upload": {
       if (!pending) return { ok: false, kept: false, error: "The recording is no longer in memory." };
       if (uploading) return { ok: true };
-      void upload(msg.token);
+      void upload(msg.token, msg.url);
       return { ok: true };
     }
     case "export-audio": {
@@ -519,7 +518,7 @@ async function stopHelper(msg: Extract<ToOffscreen, { type: "stop" }>): Promise<
       screens: r.screens,
     };
   }
-  void upload(msg.token);
+  void upload(msg.token, msg.url);
   return { ok: true };
 }
 
