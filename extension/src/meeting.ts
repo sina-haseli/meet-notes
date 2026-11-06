@@ -5,7 +5,7 @@ import type { Ack, PopupMsg } from "./messages";
 import { getHandle, getMeeting, getWebm, listScreens, updateMeeting } from "./lib/db";
 import { getSettings, type Settings } from "./lib/settings";
 import { dateLine, displayTitle, progressFor, stepText, typeLabel } from "./lib/popupView";
-import { applyRename, helperMeetingUrl, mmss, speakersOf } from "./lib/meetingView";
+import { applyRename, helperMeetingUrl, mmss, rerunFailedPatch, speakersOf } from "./lib/meetingView";
 import { renderTranscriptMd } from "./lib/transcript";
 import { clipboardHtml, renderMarkdownSafe } from "./lib/markdown";
 import { gmailComposeUrl, meetingSubject } from "./lib/gmail";
@@ -359,8 +359,8 @@ function render(r: MeetingRecord, overwrite = false): void {
     for (const c of ["progressCard", "errorCard", "interruptedCard", "noticeCard", "mainCard"]) $(c).hidden = true;
     $("helperCard").hidden = false;
     const link = $<HTMLAnchorElement>("helperLink");
-    const base = settings?.helper.url ?? "";
-    if (r.helperId && base) link.href = helperMeetingUrl(base, r.helperId);
+    const url = r.helperId ? helperMeetingUrl(settings?.helper.url ?? "", r.helperId) : null;
+    if (url) link.href = url;
     else link.removeAttribute("href");
     $("pageFoot").hidden = true;
     return;
@@ -377,7 +377,7 @@ function render(r: MeetingRecord, overwrite = false): void {
       if (overwrite) dirty[d] = false;
       if (ta.value !== (r[d] ?? "")) ta.value = r[d] ?? "";
     }
-    ta.readOnly = !editable;
+    ta.readOnly = !editable || busy; // no typing while a Retry is starting (nothing to overwrite mid-run)
     ta.placeholder = isWorking(r) ? "Being written…" : "";
   }
   if (preview) renderPreview();
@@ -478,6 +478,11 @@ async function act(msgId: string, fn: () => Promise<void>): Promise<void> {
 
 btn("retry").addEventListener("click", () =>
   act("errorMsg", async () => {
+    // Pending edits are written now, so no debounce timer can write into the meeting mid-run.
+    if (!(await flush())) {
+      setMsg("errorMsg", "Your edits could not be saved, so the meeting was not started again. Try again.", true);
+      return;
+    }
     const res = await send({ type: "retry-meeting", meetingId: id });
     if (!res?.ok) setMsg("errorMsg", res?.error ?? "Could not start again. Press Retry.", true);
   }),
@@ -542,8 +547,18 @@ btn("allowRetry").addEventListener("click", () =>
     await flush();
     await updateMeeting(id, { servicesContext, servicesNotice: undefined, notesMd: undefined, summaryMd: undefined });
     for (const d of ["summaryMd", "notesMd"] as const) dirty[d] = false;
-    const res = await send({ type: "retry-meeting", meetingId: id });
-    if (!res?.ok) setMsg("noticeMsg", res?.error ?? "Could not start again. Press Allow & Retry.", true);
+    let res: Ack | undefined;
+    let detail: string | undefined;
+    try {
+      res = await send({ type: "retry-meeting", meetingId: id });
+      detail = res?.error;
+    } catch (e) {
+      detail = e instanceof Error ? e.message : String(e);
+    }
+    if (!res?.ok) {
+      // The notes were cleared: leave a failed meeting with Retry, not a ready one without notes.
+      await updateMeeting(id, rerunFailedPatch(detail ?? "retry-meeting was not accepted"));
+    }
   }),
 );
 

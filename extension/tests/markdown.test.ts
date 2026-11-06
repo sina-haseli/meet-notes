@@ -26,6 +26,32 @@ describe("renderMarkdownSafe", () => {
   });
 });
 
+describe("renderMarkdownSafe raw-block bypass", () => {
+  const payloads = [
+    "Notes <pre><img/src=http&#58;//evil.example/x.png>",
+    "a <kbd><input/name=p>",
+    "<pre>\n<img/src=x onerror=alert(1)>\n</pre>",
+    "x <code><img/src=y>",
+  ];
+  for (const p of payloads) {
+    it(`emits no live tags for ${JSON.stringify(p)}`, () => {
+      for (const html of [renderMarkdownSafe(p), clipboardHtml(p)]) {
+        expect(html).not.toMatch(/<img/i);
+        expect(html).not.toMatch(/<input/i);
+        expect(html).not.toMatch(/<pre/i);
+        expect(html).not.toMatch(/<kbd/i);
+      }
+    });
+  }
+
+  it("still renders inline code and bold", () => {
+    const html = renderMarkdownSafe("use `a<b>` and **bold** <b>raw</b>");
+    expect(html).toContain("<code>a&lt;b&gt;</code>");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).not.toContain("<b>");
+  });
+});
+
 describe("clipboardHtml", () => {
   it("wraps Persian text in an RTL block", () => {
     const html = clipboardHtml("## خلاصه\n- API **endpoint** جدید");

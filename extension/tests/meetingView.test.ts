@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MeetingRecord, Turn } from "../src/types";
-import { applyRename, helperMeetingUrl, mmss, speakersOf } from "../src/lib/meetingView";
+import { applyRename, helperMeetingUrl, mmss, rerunFailedPatch, speakersOf } from "../src/lib/meetingView";
 
 const t = (speaker: string, text: string, uncertain = false): Turn => ({
   startMs: 0, endMs: 1000, speaker, text, uncertain, chunk: 0, label: "S1",
@@ -79,5 +79,17 @@ describe("helpers", () => {
     expect(helperMeetingUrl("http://127.0.0.1:47821/", "2026-11-06 a")).toBe(
       "http://127.0.0.1:47821/meetings/2026-11-06%20a",
     );
+  });
+  it("helperMeetingUrl is null without a helper URL (no relative link)", () => {
+    expect(helperMeetingUrl("", "a")).toBeNull();
+    expect(helperMeetingUrl("  ", "a")).toBeNull();
+  });
+  it("rerunFailedPatch turns a ready-without-notes meeting into a retryable error", () => {
+    expect(rerunFailedPatch("offscreen gone")).toEqual({
+      status: "error",
+      error: "The notes could not be written again. Press Retry.",
+      errorDetail: "offscreen gone",
+    });
+    expect(rerunFailedPatch(undefined).errorDetail).toBeUndefined();
   });
 });

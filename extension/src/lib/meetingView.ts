@@ -50,7 +50,17 @@ export function speakersOf(turns: Turn[]): SpeakerChip[] {
   return [...out.values()];
 }
 
-/** The helper's review page for a helper-mode stub. */
-export function helperMeetingUrl(helperBase: string, helperId: string): string {
-  return `${helperBase.replace(/\/+$/, "")}/meetings/${encodeURIComponent(helperId)}`;
+/** The helper's review page for a helper-mode stub, or null when no helper URL is set. */
+export function helperMeetingUrl(helperBase: string, helperId: string): string | null {
+  const base = helperBase.trim().replace(/\/+$/, "");
+  if (!base) return null; // a bare "/meetings/<id>" would resolve inside the extension
+  return `${base}/meetings/${encodeURIComponent(helperId)}`;
+}
+
+/**
+ * Allow & Retry cleared the notes but the re-run could not be started: make the meeting a normal
+ * failed one, so the page shows the error banner with Retry instead of a ready meeting without notes.
+ */
+export function rerunFailedPatch(detail: string | undefined): Pick<MeetingRecord, "status" | "error" | "errorDetail"> {
+  return { status: "error", error: "The notes could not be written again. Press Retry.", errorDetail: detail };
 }

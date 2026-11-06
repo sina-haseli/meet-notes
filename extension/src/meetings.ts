@@ -18,7 +18,8 @@ let lastSignature = "";
 function item(r: MeetingRecord): HTMLElement {
   const a = el("a", "mn-item");
   if (r.mode === "helper") {
-    if (r.helperId && settings) a.href = helperMeetingUrl(settings.helper.url, r.helperId);
+    const url = r.helperId && settings ? helperMeetingUrl(settings.helper.url, r.helperId) : null;
+    if (url) a.href = url; // no helper URL: an inert card rather than a broken relative link
     a.target = "_blank";
     a.rel = "noopener";
     a.title = "Open this meeting in the local helper";

@@ -11,6 +11,17 @@ function escapeHtml(s: string): string {
 
 const md = new Marked({ gfm: true, breaks: false, async: false });
 md.use({
+  // HTML is never tokenized, so `<` is always plain (escaped) text. Escaping only in the renderer
+  // is not enough: an inline <pre>/<code>/<kbd> puts the lexer in raw-block mode and later tags
+  // that its tag regex misses (e.g. `<img/src=…>`) would pass through unescaped.
+  tokenizer: {
+    html() {
+      return undefined;
+    },
+    tag() {
+      return undefined;
+    },
+  },
   renderer: {
     html(token: Tokens.HTML | Tokens.Tag): string {
       return escapeHtml(token.text);

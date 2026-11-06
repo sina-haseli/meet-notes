@@ -410,9 +410,9 @@ $("seeAll").addEventListener("click", (e) => {
 let lastSignature = "";
 
 function meetingUrl(r: MeetingRecord): string {
-  if (r.mode === "helper" && r.helperId) {
-    return helperMeetingUrl(settings.helper.url, r.helperId);
-  }
+  // A stub without a helper URL opens the meeting page, which explains where the meeting lives.
+  const helper = r.mode === "helper" && r.helperId ? helperMeetingUrl(settings.helper.url, r.helperId) : null;
+  if (helper) return helper;
   return extUrl(`${MEETING_PATH}?id=${encodeURIComponent(r.id)}`);
 }
 
