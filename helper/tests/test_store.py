@@ -57,3 +57,9 @@ def test_create_meeting_backslash_title(tmp_path):
                                   "started_at": "2026-11-06T10:00:00+03:30"})
     assert a.parent == tmp_path and a.name == "2026-11-06_planning_foo-bar"
     assert meeting_dir(tmp_path, a.name) == a
+
+
+def test_slugify_caps_length_at_80_without_trailing_dash():
+    assert len(slugify("x" * 200)) == 80
+    s = slugify("a" * 79 + " tail")
+    assert s == "a" * 79 and not s.endswith("-")

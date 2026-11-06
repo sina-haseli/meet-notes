@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -86,10 +87,13 @@ def main(argv: list[str] | None = None) -> int:
     if not audio.is_file():
         sys.exit(f"{audio} not found (raw audio is deleted after a successful send)")
     bench_dir = args.folder / "bench"
-    chunks = split_audio(audio, bench_dir / "_chunks")[: args.chunks]
-
-    client = OpenRouter(key)
-    rows = [bench_model(client, chunks, m, bench_dir) for m in args.models]
+    chunks_dir = bench_dir / "_chunks"
+    try:
+        chunks = split_audio(audio, chunks_dir)[: args.chunks]
+        client = OpenRouter(key)
+        rows = [bench_model(client, chunks, m, bench_dir) for m in args.models]
+    finally:
+        shutil.rmtree(chunks_dir, ignore_errors=True)
     print(format_table(rows))
     return 0
 

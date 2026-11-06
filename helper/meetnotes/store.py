@@ -7,9 +7,13 @@ from pathlib import Path
 _ILLEGAL_OR_SPACE = re.compile(r'[<>:"/\\|?*\x00-\x1f\s]+')
 
 
+SLUG_MAX = 80
+
+
 def slugify(title: str) -> str:
     slug = _ILLEGAL_OR_SPACE.sub("-", title or "")
     slug = re.sub(r"-{2,}", "-", slug).strip("-.")
+    slug = slug[:SLUG_MAX].rstrip("-.")  # keep folder paths short; no trailing dash/dot
     return slug or "meeting"
 
 

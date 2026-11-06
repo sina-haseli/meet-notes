@@ -34,7 +34,8 @@ def build_message(folder: Path, sender: str, recipients: list[str], subject: str
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = sender
+    if sender:  # empty: the Gmail API fills in the signed-in account
+        msg["From"] = sender
     msg["To"] = ", ".join(recipients)
     msg.set_content(email_md)
     msg.add_alternative(_HTML_WRAP.format(markdown.markdown(email_md)), subtype="html")

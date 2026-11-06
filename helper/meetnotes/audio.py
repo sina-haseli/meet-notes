@@ -53,13 +53,16 @@ def probe_duration_ms(path: Path) -> int:
 
 def split_audio(src: Path, out_dir: Path, chunk_s: int = 600, overlap_s: int = 5) -> list[Chunk]:
     """Split into mono 16 kHz 32 kbps mp3 chunks; chunk k starts at k*chunk_s
-    and lasts chunk_s + overlap_s (clipped at the end)."""
+    and lasts chunk_s + overlap_s (clipped at the end). A trailing piece no longer than the
+    overlap is skipped: the previous chunk already contains it."""
     src, out_dir = Path(src), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     total_ms = probe_duration_ms(src)
     count = max(1, math.ceil(total_ms / (chunk_s * 1000)))
     chunks: list[Chunk] = []
     for k in range(count):
+        if k > 0 and total_ms - k * chunk_s * 1000 <= overlap_s * 1000:
+            break
         out = out_dir / f"chunk_{k:03d}.mp3"
         err, rc = _run([
             "-nostdin", "-y", "-ss", str(k * chunk_s), "-t", str(chunk_s + overlap_s),

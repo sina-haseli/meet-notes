@@ -157,3 +157,9 @@ def test_valid_refresh_keeps_token_and_skips_consent(gmail_files, monkeypatch):
     monkeypatch.setattr(Credentials, "from_authorized_user_file", classmethod(lambda cls, p, s: Refreshable()))
     load_gmail_credentials(token, client)
     assert log == [] and token.read_text(encoding="utf-8") == '{"refreshed": true}'
+
+
+def test_from_header_omitted_when_mail_from_empty(meeting):
+    # The Gmail API fills From with the signed-in account; an empty From header is invalid.
+    assert "From" not in build_message(meeting, "", ["a@x.com"], "s")
+    assert build_message(meeting, "me@x.com", ["a@x.com"], "s")["From"] == "me@x.com"

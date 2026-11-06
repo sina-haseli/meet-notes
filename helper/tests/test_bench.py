@@ -49,6 +49,7 @@ def test_bench_writes_files_and_table_and_survives_errors(bench, meeting, respx_
     assert "سلام endpoint" in md and "S1" in md
     assert (meeting / "bench" / "junk_model.md").exists()
     assert not (meeting / "bench" / "bad_model.md").exists()
+    assert not (meeting / "bench" / "_chunks").exists()  # temporary chunks are cleaned up
     lines = out.strip().splitlines()
     assert lines[0].split() == ["model", "cost_usd", "seconds", "turns", "parse_ok"]
     good = next(line for line in lines if line.startswith("good/model"))
