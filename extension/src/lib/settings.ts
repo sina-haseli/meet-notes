@@ -11,6 +11,7 @@ export interface Settings {
   models: { transcribe: string; vision: string; notes: string };
   helper: { enabled: boolean; url: string; token: string };
   lastType: MeetingType;
+  codeSuggestions: boolean;
 }
 
 export const DEFAULT_MODELS: Settings["models"] = {
@@ -39,6 +40,7 @@ function defaults(): Settings {
     models: { ...DEFAULT_MODELS },
     helper: { enabled: false, url: HELPER_URL, token: "" },
     lastType: "technical",
+    codeSuggestions: false,
   };
 }
 

@@ -14,6 +14,7 @@ function settings(patch: Partial<Settings> = {}): Settings {
     models: { ...DEFAULT_MODELS },
     helper: { enabled: false, url: HELPER_URL, token: "" },
     lastType: "technical",
+    codeSuggestions: false,
     ...patch,
   };
 }

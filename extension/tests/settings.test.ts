@@ -39,4 +39,8 @@ describe("settings", () => {
     expect(s.helper.token).toBe("t");
     expect(s.selfName).toBe("Sina");
   });
+  it("codeSuggestionsDefaultsFalse", async () => {
+    expect((await getSettings(fake())).codeSuggestions).toBe(false);
+    expect((await getSettings(fake({ token: "t", selfName: "S" }))).codeSuggestions).toBe(false);
+  });
 });
