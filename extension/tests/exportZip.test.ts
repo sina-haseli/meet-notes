@@ -3,6 +3,7 @@ import { strFromU8, unzipSync } from "fflate";
 import type { MeetingRecord } from "../src/types";
 import { buildMeetingZip, zipFileName } from "../src/lib/exportZip";
 import { renderTranscriptMd } from "../src/lib/transcript";
+import { reportToMarkdown, type Report } from "../src/lib/report";
 
 function rec(): MeetingRecord {
   return {
@@ -53,6 +54,28 @@ describe("buildMeetingZip", () => {
     expect(meta.id).toBe(r.id);
     expect(meta.screens).toEqual(r.screens);
     expect(meta.notesMd).toBe(r.notesMd);
+  });
+
+  it("adds report.html and a markdown summary.md for a record with a structured report", async () => {
+    const report: Report = {
+      title: "بررسی تسک‌های داشبورد", summary: ["خلاصه کوتاه"], decisions: [{ text: "تصمیم اول" }],
+      actions: [{ text: "کار اول", owner: "Reza", due: "امروز" }], topics: [], people: [], followUps: [], codeServices: [],
+    };
+    const r = { ...rec(), summaryMd: undefined, report };
+    const files = unzipSync(new Uint8Array(await (await buildMeetingZip(r, [])).arrayBuffer()));
+    expect(Object.keys(files).sort()).toEqual(["meta.json", "notes.md", "report.html", "summary.md", "transcript.md"]);
+    const html = strFromU8(files["report.html"]);
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    expect(html).toContain("بررسی تسک‌های داشبورد");
+    expect(strFromU8(files["summary.md"])).toBe(reportToMarkdown(report, r, r.turns!));
+    expect(JSON.parse(strFromU8(files["meta.json"]))).not.toHaveProperty("report");
+  });
+
+  it("leaves an old record with only summaryMd unchanged and adds no report.html", async () => {
+    const r = rec();
+    const files = unzipSync(new Uint8Array(await (await buildMeetingZip(r, [])).arrayBuffer()));
+    expect(files).not.toHaveProperty("report.html");
+    expect(strFromU8(files["summary.md"])).toBe(r.summaryMd);
   });
 
   it("writes empty documents when nothing was generated", async () => {

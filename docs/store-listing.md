@@ -4,17 +4,19 @@
 
 - **Name:** Meet Notes
 - **Category:** Productivity
-- **Short description (max 132 chars):** Record a Google Meet and get a Persian summary, English notes and a transcript. Your key, your data, no account.
-- **Single purpose:** Record the Google Meet meeting the user chooses and turn it into a transcript, a summary and meeting notes.
+- **Short description (max 132 chars):** Record a Google Meet and get a Persian report, English notes and a transcript. Your key, your data, no account.
+- **Single purpose:** Record the Google Meet meeting the user chooses and turn it into a transcript, a report and meeting notes.
 
 ## Detailed description
 
 Meet Notes records a Google Meet meeting when you press Start and, when you press Stop, turns it into:
 
-- a **Summary** (Persian, with English technical terms kept as spoken) ready to paste into an email,
+- a **Persian report** (English technical terms kept as spoken) with a summary, decisions, actions with owner and deadline when they were said, notes by topic, follow-ups and meeting statistics; a Daily meeting keeps yesterday / today / blockers for each person. You can edit any text in place, copy it into an email, or save it as a **PDF** with Chrome's Save as PDF,
 - **AI notes** (English) following a template for your meeting type: Grooming, Planning, Technical or Daily,
 - a **Transcript** with speaker names and timestamps,
 - **Screens**: images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to your AI provider to be described, each with a short description.
+
+Before the report is written, processing pauses and a notification asks you to name the voices: each voice has a short clip to play, with a button for another clip. Names from Google Meet are pre-filled, and you can rename them later. The extension does not recognise voices across meetings.
 
 How it works: setup takes three steps (your AI provider and key: OpenRouter, AvalAI or any OpenAI-compatible service; your name in Meet, and optionally a services folder so notes use your real service names; an optional switch, “Suggest where to change the code”, also searches that folder's code and sends the paths of matching files and short snippets of matching lines, with secrets masked, to your AI provider with the meeting). Processing runs inside Chrome and uses your own API key, so there is no Meet Notes account and no Meet Notes server. If you close Chrome mid-processing, it resumes when you reopen it.
 
@@ -53,7 +55,8 @@ Please tell the people in your meeting that you are recording.
 - [ ] Setup, step 1 (AI provider and key connected)
 - [ ] Popup in Idle with type chips and Recent meetings
 - [ ] Popup while recording (timer and Stop)
-- [ ] Meeting page: Summary tab (Persian)
+- [ ] Meeting page: Persian report tab
+- [ ] Meeting page: voice naming cards
 - [ ] Meeting page: AI notes tab
 - [ ] Optional: promo tile 440x280; the 128x128 icon is `extension/icons/128.png`
 

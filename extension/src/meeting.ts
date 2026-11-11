@@ -670,7 +670,7 @@ btn("downloadZip").addEventListener("click", () =>
   guarded(btn("downloadZip"), "Downloading…", async () => {
     await flush();
     if (!rec) return;
-    const doc = { ...rec, summaryMd: summaryTa.value, notesMd: notesTa.value };
+    const doc = { ...rec, summaryMd: summaryTa.value, notesMd: notesTa.value, ...(reportDraft ? { report: reportDraft } : {}) };
     await saveBlob(await buildMeetingZip(doc, await listScreens(id)), zipFileName(rec));
   }),
 );

@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-07
 
-Meet Notes is a Chrome extension that records a Google Meet meeting you choose to record and turns it into a transcript, a summary and notes. This policy explains what it handles and where that data goes.
+Meet Notes is a Chrome extension that records a Google Meet meeting you choose to record and turns it into a transcript, a report and notes. This policy explains what it handles and where that data goes.
 
 ## What the extension handles
 
@@ -17,6 +17,7 @@ Meet Notes is a Chrome extension that records a Google Meet meeting you choose t
 
 - **Only the AI provider you choose.** To make your notes, the extension sends audio, screenshots (up to 60 images of the Meet tab per meeting, which can show the shared screen and participants' video), speaker names and the optional services text to the AI provider you pick in setup or Settings, using your own API key: OpenRouter (https://openrouter.ai, the default), AvalAI (https://avalai.ir), or another OpenAI-compatible AI service at an https address you enter. Chrome asks your permission before the extension can reach any provider other than OpenRouter. If you turn on “Suggest where to change the code”, it also sends the paths of matching files and short snippets of matching lines from your services folder's code (secrets masked). The provider passes the request to the AI model you selected. The provider's and the model maker's privacy terms apply to that processing.
 - **Local helper mode (optional, off by default):** if you turn it on, recordings (audio, screenshots and speaker names) are sent to a local helper at a URL you set (default `http://127.0.0.1:47821`), meant to be a helper program on your own computer. That data does not leave your computer except as that helper's own calls.
+- Naming the voices adds nothing to this: the short voice clips on the naming cards are played locally from the audio stored in your browser, and no extra data is sent. The extension does not recognise voices across meetings.
 - Nothing is sent anywhere else. There are no analytics, no telemetry and no crash reporting.
 - Nothing is emailed, posted or shared unless you click an action such as "Open in Gmail" or "Copy".
 
@@ -26,7 +27,7 @@ Everything is stored only in your own browser (IndexedDB and `chrome.storage.loc
 
 ## Retention
 
-- Audio is deleted automatically 30 days after the notes for that meeting are ready. Audio of a meeting that failed is kept until you retry successfully, download it or delete the meeting.
+- Audio is deleted automatically 30 days after the report and notes for that meeting are ready. Audio of a meeting that is waiting for you to name its voices is kept until you confirm the names and the report is ready; the 30 days start then. Audio of a meeting that failed is kept until you retry successfully, download it or delete the meeting.
 - Transcripts, notes, screenshots and settings stay until you delete them. "Delete all meetings" in Settings removes all meetings; removing the extension removes all of its data.
 
 ## No sale, no transfer
