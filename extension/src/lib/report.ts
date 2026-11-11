@@ -12,11 +12,12 @@ export interface Report {
   topics: Topic[]; people: DailyPerson[]; followUps: Item[]; codeServices: CodeService[];
 }
 export interface SpeakerStat { name: string; talkMs: number; share: number; words: number }
-type Meta = Pick<MeetingRecord, "startedAt" | "durationMs" | "type">;
+export type Meta = Pick<MeetingRecord, "startedAt" | "durationMs" | "type">;
 
-const FOOTER = "ساخته‌شده با Meet Notes";
-const DASH = "—";
-const T = {
+export const FOOTER = "ساخته‌شده با Meet Notes";
+export const DASH = "—";
+/** Section titles, in report order. */
+export const T = {
   summary: "خلاصه", decisions: "تصمیم‌ها", actions: "اقدام‌ها", topics: "یادداشت موضوعی",
   followUps: "پیگیری‌ها", code: "سرویس‌های احتمالی برای تغییر (پیشنهاد AI)", stats: "آمار جلسه",
 };
@@ -93,7 +94,7 @@ export function jalaliDate(iso: string): string {
   return `${part("day")} ${part("month")} ${part("year")}`;
 }
 
-const faDigits = (s: string) => s.replace(/\d/g, (c) => "۰۱۲۳۴۵۶۷۸۹"[+c]);
+export const faDigits = (s: string) => s.replace(/\d/g, (c) => "۰۱۲۳۴۵۶۷۸۹"[+c]);
 const pct = (share: number) => `٪${faNum(share * 100, 1)}`;
 
 export function speakerStats(turns: Turn[]): { totalMs: number; words: number; speakers: SpeakerStat[] } {
@@ -137,28 +138,29 @@ export function renameInReport(r: Report, old: string, next: string): Report {
 
 // ---------- shared view model ----------
 
-const isDaily = (m: Meta) => m.type === "daily";
+export const isDaily = (m: Meta) => m.type === "daily";
 const orDash = (s: string) => (s === "" ? DASH : s);
-const GROUPS = (p: DailyPerson): [string, string[]][] =>
-  [["دیروز", p.yesterday], ["امروز", p.today], ["موانع", p.blockers]];
+/** The daily groups of one person, in order: [label, items, field]. */
+export const GROUPS = (p: DailyPerson): [string, string[], "yesterday" | "today" | "blockers"][] =>
+  [["دیروز", p.yesterday, "yesterday"], ["امروز", p.today, "today"], ["موانع", p.blockers, "blockers"]];
 
-function metaLines(m: Meta, turns: Turn[]): string[] {
+export function metaLines(m: Meta, turns: Turn[]): string[] {
   const speakers = speakerStats(turns).speakers;
   const line = [jalaliDate(m.startedAt), faDuration(m.durationMs), `${faNum(speakers.length)} گوینده`].join(" · ");
   const named = speakers.map((s) => s.name).filter((n) => turns.some((t) => t.speaker === n && !t.uncertain));
   return named.length ? [line, `حاضران: ${named.join("، ")}`] : [line];
 }
 
-function actionColumns(m: Meta): string[] {
+export function actionColumns(m: Meta): string[] {
   return isDaily(m) ? ["مانع", "فرد", "رفع‌کننده"] : ["کار", "مسئول", "موعد"];
 }
 function actionCells(a: Action, m: Meta): string[] {
   return isDaily(m) ? [a.text, orDash(a.person ?? ""), orDash(a.owner)] : [a.text, orDash(a.owner), orDash(a.due)];
 }
-function statRows(turns: Turn[]): [string, string][] {
+export function statRows(turns: Turn[]): [string, string][] {
   return speakerStats(turns).speakers.map((s) => [s.name, `${faDuration(s.talkMs)} · ${pct(s.share)}`]);
 }
-function statTotals(m: Meta, turns: Turn[]): string {
+export function statTotals(m: Meta, turns: Turn[]): string {
   const s = speakerStats(turns);
   return [`مدت: ${faDuration(m.durationMs)}`, `گوینده‌ها: ${faNum(s.speakers.length)}`, `کلمه‌ها: ${faNum(s.words)}`].join(" · ");
 }
@@ -198,7 +200,8 @@ export function reportToMarkdown(r: Report, m: Meta, turns: Turn[]): string {
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const multi = (s: string) => esc(s).replace(/\n/g, "<br>");
 
-const CSS = `.report{font-family:Vazirmatn,Tahoma,sans-serif;background:#fff;color:#222;padding:18px 22px;line-height:1.9}
+/** The report stylesheet, shared by the meeting page, the PDF and report.html. */
+export const REPORT_CSS = `.report{font-family:Vazirmatn,Tahoma,sans-serif;background:#fff;color:#222;padding:18px 22px;line-height:1.9}
 .report h1{color:#4f46e5;font-size:22px;margin:0 0 4px}
 .report .meta{color:#777;font-size:12.5px}
 .report .rule{height:3px;background:#4f46e5;margin:12px 0 16px;border-radius:2px}
@@ -253,5 +256,5 @@ export function reportToHtml(
   const body = `<div class="report" dir="rtl" lang="fa">${parts.join("")}</div>`;
   if (!opts.standalone) return body;
   return `<!doctype html>\n<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${esc(r.title)}</title>` +
-    `<style>body{margin:0}${CSS}</style></head><body>${body}</body></html>`;
+    `<style>body{margin:0}${REPORT_CSS}</style></head><body>${body}</body></html>`;
 }

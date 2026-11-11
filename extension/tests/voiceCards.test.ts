@@ -46,6 +46,20 @@ describe("renderVoiceCards", () => {
     expect(card(1).classList.contains("unk")).toBe(true);
   });
 
+  it("marks a name as from Google Meet only while it is Meet's name, unchanged", () => {
+    const given: Voice = { ...voices[0], key: "سینا", name: "سینا", fromMeet: false };
+    renderVoiceCards(root, [voices[0], given], { audio: true, play, stop });
+    expect(q(1, ".vhint").textContent).toBe("");
+    expect(card(1).classList.contains("unk")).toBe(false);
+    const input = q(0, "input") as HTMLInputElement;
+    input.value = "دانیال رضایی";
+    input.dispatchEvent(new Event("input"));
+    expect(q(0, ".vhint").textContent).toBe("");
+    input.value = "دانیال";
+    input.dispatchEvent(new Event("input"));
+    expect(q(0, ".vhint").textContent).toBe("پیشنهاد از Google Meet");
+  });
+
   it("↻ advances, stops, replays when it was playing, and wraps", () => {
     mount();
     q(0, ".next").click();

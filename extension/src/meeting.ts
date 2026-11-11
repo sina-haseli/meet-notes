@@ -1,5 +1,6 @@
-// The meeting page (dist/meeting.html?id=<id>): banners, speakers, and the Summary / AI notes /
-// Transcript / Screens tabs with copy, Gmail draft and downloads.
+// The meeting page (dist/meeting.html?id=<id>): banners, voice naming, and the tabs. Meetings with
+// a report get گزارش / متن جلسه / تصاویر / یادداشت فنی (English); older meetings (a summaryMd and
+// no report) keep Summary / AI notes / Transcript / Screens with the speaker chips.
 import type { MeetingRecord } from "./types";
 import type { Ack, PopupMsg } from "./messages";
 import { getHandle, getMeeting, getWebm, listScreens, updateMeeting } from "./lib/db";
@@ -16,13 +17,15 @@ import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { el, saveBlob, twoClick } from "./lib/dom";
 import { voicesOf } from "./lib/voices";
 import { clipBlob, createClipPlayer, renderVoiceCards } from "./voiceCards";
-import { faNum } from "./lib/report";
+import { REPORT_CSS, faNum, reportToHtml, reportToMarkdown, speakerStats, type Report } from "./lib/report";
+import { renamePatch, renameVoices } from "./lib/renameLater";
+import { renderReport, setReportEditable } from "./reportView";
 
 const SAVE_DEBOUNCE_MS = 800;
 const POLL_MS = 1000;
 const SETTINGS_PATH = "dist/settings.html";
 
-type Tab = "summary" | "notes" | "transcript" | "screens";
+type Tab = "report" | "summary" | "notes" | "transcript" | "screens";
 type Doc = "summaryMd" | "notesMd";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -31,6 +34,8 @@ const id = new URLSearchParams(location.search).get("id") ?? "";
 let rec: MeetingRecord | undefined;
 let settings: Settings | undefined;
 let tab: Tab = "summary";
+/** Which tab set is shown: the report one, or the legacy one (undefined until the first render). */
+let reportMode: boolean | undefined;
 let preview = false;
 let renaming: string | null = null;
 let busy = false;
@@ -39,6 +44,14 @@ const summaryTa = $<HTMLTextAreaElement>("summary");
 const notesTa = $<HTMLTextAreaElement>("notes");
 const areas: Record<Doc, HTMLTextAreaElement> = { summaryMd: summaryTa, notesMd: notesTa };
 const dirty: Record<Doc, boolean> = { summaryMd: false, notesMd: false };
+/** The report on screen, with the user's edits; saved like the text areas. */
+let reportDraft: Report | undefined;
+let reportDirty = false;
+const anyDirty = () => dirty.summaryMd || dirty.notesMd || reportDirty;
+
+const reportStyle = document.createElement("style");
+reportStyle.textContent = REPORT_CSS;
+document.head.append(reportStyle);
 
 function send(msg: PopupMsg): Promise<Ack | undefined> {
   return chrome.runtime.sendMessage(msg) as Promise<Ack | undefined>;
@@ -74,26 +87,35 @@ async function flush(): Promise<boolean> {
       dirty[d] = false;
     }
   }
+  if (reportDirty && reportDraft) {
+    patch.report = reportDraft;
+    reportDirty = false;
+  }
   if (Object.keys(patch).length === 0) return true;
   setSaved("Saving…");
   try {
     rec = await updateMeeting(id, patch);
     // Typing during the write leaves the field dirty; it is saved by the next timer.
-    setSaved(dirty.summaryMd || dirty.notesMd ? "Saving…" : "Saved", dirty.summaryMd || dirty.notesMd ? "" : "ok");
+    setSaved(anyDirty() ? "Saving…" : "Saved", anyDirty() ? "" : "ok");
     return true;
   } catch {
-    for (const d of Object.keys(patch) as Doc[]) dirty[d] = true;
+    for (const d of ["summaryMd", "notesMd"] as const) if (d in patch) dirty[d] = true;
+    if ("report" in patch) reportDirty = true;
     setSaved("Your edits could not be saved. Keep this tab open and type again to retry.", "err");
     return false;
   }
 }
 
+function scheduleSave(): void {
+  setSaved("Saving…");
+  if (saveTimer !== undefined) clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
+}
+
 for (const d of ["summaryMd", "notesMd"] as const) {
   areas[d].addEventListener("input", () => {
     dirty[d] = true;
-    setSaved("Saving…");
-    if (saveTimer !== undefined) clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
+    scheduleSave();
     if (d === "summaryMd" && preview) renderPreview();
   });
 }
@@ -165,7 +187,7 @@ function renderNaming(r: MeetingRecord): void {
   const on = r.status === "naming";
   $("namingCard").hidden = !on;
   if (!on) {
-    stopPlayer();
+    if (namingFor) stopPlayer(); // the player is shared with the rename panel
     namingFor = "";
     return;
   }
@@ -268,7 +290,135 @@ async function commitRename(old: string, next: string): Promise<void> {
   if (rec) render(rec, true);
 }
 
+// ================= report =================
+
+let reportKey = "";
+
+/** Everything the report view shows: the report, the computed meta line and the stats. */
+function reportViewKey(report: Report, r: MeetingRecord): string {
+  const turns = r.turns ?? [];
+  return JSON.stringify([report, r.startedAt, r.durationMs, r.type, speakerStats(turns), speakersOf(turns)]);
+}
+
+function onReportEdit(next: Report): void {
+  reportDraft = next;
+  if (rec) reportKey = reportViewKey(next, rec); // the DOM already shows it: no redraw on save
+  reportDirty = true;
+  scheduleSave();
+}
+
+/** `overwrite` replaces the report even when it holds unsaved edits (after a rename). */
+function renderReportPane(r: MeetingRecord, overwrite: boolean): void {
+  const box = $("report");
+  if (overwrite) reportDirty = false;
+  if (!r.report) {
+    reportDraft = undefined;
+    reportKey = "";
+    box.replaceChildren(el("div", "empty", isWorking(r) || r.status === "naming" ? "گزارش در حال نوشتن است…" : "گزارشی نوشته نشده است."));
+    return;
+  }
+  const key = reportViewKey(r.report, r);
+  if (!reportDirty && key !== reportKey) {
+    reportDraft = r.report;
+    reportKey = key;
+    renderReport(box, r.report, { rec: r, turns: r.turns ?? [] }, onReportEdit);
+  }
+  setReportEditable(box, isEditable(r) && !busy);
+}
+
+// ---- renaming later: the voice cards again, grouped by current name; no AI call ----
+
+let renameNames: (() => Record<string, string>) | undefined;
+
+const canRenameLater = (r: MeetingRecord) => isEditable(r) && !busy && Boolean(r.report) && Boolean(r.turns?.length);
+
+function openRenamePanel(r: MeetingRecord): void {
+  setMsg("renameMsg", "");
+  renameNames = renderVoiceCards($("renameVoices"), renameVoices(r), {
+    audio: !r.audioDeleted, play: playClip, stop: stopPlayer,
+  }).names;
+  $("renamePanel").hidden = false;
+}
+
+function closeRenamePanel(): void {
+  if ($("renamePanel").hidden) return;
+  stopPlayer();
+  $("renamePanel").hidden = true;
+  $("renameVoices").replaceChildren();
+  renameNames = undefined;
+}
+
+$("renameSpeakers").addEventListener("click", () => {
+  if (!$("renamePanel").hidden) closeRenamePanel();
+  else if (rec && canRenameLater(rec)) openRenamePanel(rec);
+});
+$("cancelNames").addEventListener("click", closeRenamePanel);
+
+$("saveNames").addEventListener("click", async () => {
+  if (!renameNames) return;
+  const names = renameNames();
+  const save = $<HTMLButtonElement>("saveNames");
+  save.disabled = true;
+  setMsg("renameMsg", "");
+  try {
+    // Edits are saved first, so the names are replaced in the report as the user left it.
+    if (!(await flush())) throw new Error("edits not saved");
+    const cur = await getMeeting(id);
+    if (!cur) throw new Error("meeting not found");
+    const patch = renamePatch(cur, names);
+    rec = patch ? await updateMeeting(id, patch) : cur;
+    closeRenamePanel();
+    if (patch) setSaved("Saved", "ok");
+    render(rec, true);
+  } catch (e) {
+    console.warn(e);
+    setMsg("renameMsg", "نام‌ها ذخیره نشد. دوباره تلاش کنید.", true);
+  } finally {
+    save.disabled = false;
+  }
+});
+
 // ================= tabs =================
+
+const TAB_SETS: Record<"report" | "legacy", Tab[]> = {
+  report: ["report", "transcript", "screens", "notes"],
+  legacy: ["summary", "notes", "transcript", "screens"],
+};
+const TAB_LABELS: Record<Exclude<Tab, "screens">, [legacy: string, report: string]> = {
+  report: ["", "گزارش"],
+  summary: ["Summary", ""],
+  notes: ["AI notes", "یادداشت فنی (English)"],
+  transcript: ["Transcript", "متن جلسه"],
+};
+let screensCount = 0;
+
+const tabButton = (t: Tab) => $("tabs").querySelector<HTMLButtonElement>(`button[data-tab="${t}"]`)!;
+
+function screensLabel(): string {
+  if (reportMode) return screensCount ? `تصاویر (${faNum(screensCount)})` : "تصاویر";
+  return screensCount ? `Screens (${screensCount})` : "Screens";
+}
+
+/** A meeting with a report, or one with no legacy summary (new, or still being written), gets the report tabs. */
+const wantsReport = (r: MeetingRecord) => Boolean(r.report) || r.summaryMd === undefined;
+
+function setTabSet(report: boolean): void {
+  if (reportMode === report) return;
+  const first = reportMode === undefined;
+  reportMode = report;
+  const order = TAB_SETS[report ? "report" : "legacy"];
+  const bar = $("tabs");
+  if (report) bar.dir = "rtl";
+  else bar.removeAttribute("dir");
+  for (const t of ["report", "summary", "notes", "transcript", "screens"] as const) {
+    const b = tabButton(t);
+    b.hidden = !order.includes(t);
+    b.textContent = t === "screens" ? screensLabel() : TAB_LABELS[t][report ? 1 : 0];
+  }
+  bar.append(...order.map(tabButton));
+  // The report is the default tab; legacy meetings open on Summary as before.
+  if (first || report || !order.includes(tab)) showTab(order[0]);
+}
 
 function showTab(t: Tab): void {
   tab = t;
@@ -279,7 +429,7 @@ function showTab(t: Tab): void {
       b.classList.toggle("on", on);
       b.setAttribute("aria-selected", String(on));
     });
-  for (const name of ["summary", "notes", "transcript", "screens"] as const) $(`pane-${name}`).hidden = name !== t;
+  for (const name of ["report", "summary", "notes", "transcript", "screens"] as const) $(`pane-${name}`).hidden = name !== t;
   if (t === "screens") void loadScreens();
 }
 
@@ -355,7 +505,8 @@ async function loadScreens(force = false): Promise<void> {
   screenUrls = [];
   const desc = new Map((rec.screens ?? []).map((s) => [s.atMs, s.description]));
   $("screensEmpty").hidden = shots.length > 0;
-  $("screensTab").textContent = shots.length ? `Screens (${shots.length})` : "Screens";
+  screensCount = shots.length;
+  $("screensTab").textContent = screensLabel();
   $("screens").replaceChildren(
     ...shots.map((s) => {
       const url = URL.createObjectURL(s.blob);
@@ -396,10 +547,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 function hasContent(r: MeetingRecord): boolean {
-  return r.status === "ready" || Boolean(r.turns?.length || r.summaryMd || r.notesMd);
+  return r.status === "ready" || Boolean(r.turns?.length || r.report || r.summaryMd || r.notesMd);
 }
 
-/** `overwrite` replaces the text areas even when they hold unsaved edits (after a rename). */
+/** `overwrite` replaces the text areas and the report even when they hold unsaved edits (after a rename). */
 function render(r: MeetingRecord, overwrite = false): void {
   for (const c of ["notFound", "helperCard"]) $(c).hidden = true;
   renderHeader(r);
@@ -420,6 +571,7 @@ function render(r: MeetingRecord, overwrite = false): void {
   $("mainCard").hidden = !hasContent(r);
   if ($("mainCard").hidden) return;
 
+  setTabSet(wantsReport(r));
   const editable = isEditable(r);
   for (const d of ["summaryMd", "notesMd"] as const) {
     const ta = areas[d];
@@ -431,13 +583,18 @@ function render(r: MeetingRecord, overwrite = false): void {
     ta.placeholder = isWorking(r) ? "Being written…" : "";
   }
   if (preview) renderPreview();
-  if (renaming === null) renderSpeakers(r);
+  renderReportPane(r, overwrite);
+  if (!canRenameLater(r)) closeRenamePanel();
+  // Speaker chips are the legacy rename; report meetings rename through the voice cards.
+  if (reportMode) $("speakersRow").hidden = true;
+  else if (renaming === null) renderSpeakers(r);
   renderTranscript(r);
   if (tab === "screens") void loadScreens();
   else if (!screensKey) void loadScreens(); // fills the tab's count
-  for (const b of ["copySummary", "openGmail", "copyNotes", "downloadZip", "copyTranscript", "downloadTranscript"]) {
+  for (const b of ["copySummary", "openGmail", "copyReport", "gmailReport", "copyNotes", "downloadZip", "copyTranscript", "downloadTranscript"]) {
     $<HTMLButtonElement>(b).disabled = isWorking(r) && b !== "copyTranscript" && b !== "downloadTranscript";
   }
+  $<HTMLButtonElement>("renameSpeakers").disabled = !canRenameLater(r);
 }
 
 // ================= actions =================
@@ -456,17 +613,17 @@ async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
 
-/** Rich copy: sanitized HTML for email clients plus the Markdown as plain text. */
-async function copyRich(md: string): Promise<void> {
+/** Rich copy: HTML for email clients plus a plain-text (Markdown) version. */
+async function copyRich(html: string, text: string): Promise<void> {
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
-        "text/html": new Blob([clipboardHtml(md)], { type: "text/html" }),
-        "text/plain": new Blob([md], { type: "text/plain" }),
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" }),
       }),
     ]);
   } catch {
-    await navigator.clipboard.writeText(md);
+    await navigator.clipboard.writeText(text);
   }
 }
 
@@ -484,8 +641,18 @@ async function guarded(btn: HTMLButtonElement, done: string, fn: () => Promise<v
 const btn = (bid: string) => $<HTMLButtonElement>(bid);
 
 btn("copySummary").addEventListener("click", () =>
-  guarded(btn("copySummary"), "Copied", () => copyRich(summaryTa.value)),
+  guarded(btn("copySummary"), "Copied", () => copyRich(clipboardHtml(summaryTa.value), summaryTa.value)),
 );
+btn("copyReport").addEventListener("click", () =>
+  guarded(btn("copyReport"), "کپی شد", async () => {
+    if (!rec || !reportDraft) return;
+    const turns = rec.turns ?? [];
+    await copyRich(reportToHtml(reportDraft, rec, turns, { timestamps: false }), reportToMarkdown(reportDraft, rec, turns));
+  }),
+);
+btn("gmailReport").addEventListener("click", () => {
+  if (rec) void chrome.tabs.create({ url: gmailComposeUrl(meetingSubject({ ...rec, title: reportDraft?.title ?? rec.title })) });
+});
 btn("openGmail").addEventListener("click", () => {
   if (rec) void chrome.tabs.create({ url: gmailComposeUrl(meetingSubject(rec)) });
 });
@@ -597,8 +764,10 @@ btn("allowRetry").addEventListener("click", () =>
     await flush();
     await updateMeeting(id, {
       servicesContext, servicesNotice: undefined, codeSearch: undefined, notesMd: undefined, summaryMd: undefined,
+      report: undefined, // the confirmed names (namesConfirmedAt) stay
     });
     for (const d of ["summaryMd", "notesMd"] as const) dirty[d] = false;
+    reportDirty = false;
     let res: Ack | undefined;
     let detail: string | undefined;
     try {
@@ -658,8 +827,7 @@ async function init(): Promise<void> {
   } catch (e) {
     console.warn("could not read settings", e);
   }
-  showTab("summary");
-  await reload();
+  await reload(); // the first render picks the tab set and its first tab
   window.setInterval(() => {
     if (rec && (isWorking(rec) || rec.status === "recording") && !busy) void reload();
   }, POLL_MS);

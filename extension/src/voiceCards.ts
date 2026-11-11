@@ -97,7 +97,13 @@ export function renderVoiceCards(root: HTMLElement, voices: Voice[], opts: Voice
     input.placeholder = "نام این فرد";
     input.value = v.name;
     input.setAttribute("aria-label", `نام صدای ${fa(String(n + 1))}`);
-    const hint = el("div", `vhint${v.name ? "" : " warn"}`, v.name ? "پیشنهاد از Google Meet" : "نامشخص — لطفاً نام بدهید");
+    const hint = el("div", `vhint${v.name ? "" : " warn"}`, v.name ? "" : "نامشخص — لطفاً نام بدهید");
+    // Meet's suggestion is labelled as such only while the box still holds it.
+    const meetHint = () => {
+      if (v.name) hint.textContent = v.fromMeet && input.value.trim() === v.name ? "پیشنهاد از Google Meet" : "";
+    };
+    meetHint();
+    input.addEventListener("input", meetHint);
     const nameBox = el("div", "vname");
     nameBox.append(input, hint);
     card.append(playBtn, mid, next, nameBox);

@@ -102,6 +102,21 @@
     .nfoot .vbtn { padding: 0 16px; }
     .nfoot .nnote { font-size: 12.5px; color: #888; }
 
+    /* report tab (the report itself is styled by REPORT_CSS, injected by meeting.ts) */
+    .tabs[dir="rtl"] { margin-left: auto; font-family: Vazirmatn, Tahoma, sans-serif; }
+    #pane-report { font-family: Vazirmatn, Tahoma, sans-serif; }
+    .report-box { border: 1px solid var(--mn-border); border-radius: 10px; overflow: hidden; }
+    .report [data-path] { outline: none; border-radius: 3px; }
+    .report [contenteditable="plaintext-only"]:hover { background: #f6f5ff; }
+    .report [contenteditable="plaintext-only"]:focus { background: #f6f5ff; box-shadow: 0 0 0 2px #c7c4fb; }
+    .report [data-empty]:empty::before { content: attr(data-empty); }
+    .report .del { visibility: hidden; border: 0; background: none; color: #b42318; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+    .report tr:hover .del, .report h3:hover .del, .report li:hover .del { visibility: visible; }
+    .report .del:disabled { display: none; }
+    @media print { .report .del { display: none; } }
+    .rename-panel { background: #fafafe; color: #222; border: 1px solid var(--mn-border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    #renameVoices { display: grid; gap: 10px; }
+
     .lightbox { position: fixed; inset: 0; background: rgba(10, 10, 20, 0.85); display: flex; align-items: center; justify-content: center; padding: 24px; cursor: zoom-out; z-index: 10; }
     .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
   </style>
@@ -191,10 +206,30 @@
         </div>
 
         <div class="mn-seg tabs" id="tabs" role="tablist">
+          <button type="button" data-tab="report" role="tab" hidden>گزارش</button>
           <button type="button" data-tab="summary" role="tab">Summary</button>
           <button type="button" data-tab="notes" role="tab">AI notes</button>
           <button type="button" data-tab="transcript" role="tab">Transcript</button>
           <button type="button" data-tab="screens" role="tab" id="screensTab">Screens</button>
+        </div>
+
+        <div class="pane" id="pane-report" dir="rtl" hidden>
+          <div class="mn-row toolbar">
+            <div class="mn-sp"></div>
+            <button class="mn-btn-ghost" id="renameSpeakers" title="نام گوینده‌ها را در گزارش، متن جلسه و یادداشت فنی عوض کنید">نام گوینده‌ها</button>
+            <button class="mn-btn-ghost" id="gmailReport" title="پیش‌نویس Gmail با موضوع جلسه باز می‌شود؛ گزارش را در آن بچسبانید.">Gmail</button>
+            <button class="mn-btn" id="copyReport">کپی</button>
+            <!-- Task 8: دانلود PDF -->
+          </div>
+          <div class="rename-panel" id="renamePanel" hidden>
+            <div id="renameVoices"></div>
+            <div class="nfoot">
+              <button class="vbtn on" id="saveNames" type="button">ذخیره نام‌ها</button>
+              <button class="vbtn" id="cancelNames" type="button">انصراف</button>
+            </div>
+            <div class="msg" id="renameMsg"></div>
+          </div>
+          <div class="report-box" id="report"></div>
         </div>
 
         <div class="pane" id="pane-summary">
