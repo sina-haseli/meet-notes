@@ -10,7 +10,7 @@ import { complete, describeImage, OpenRouterError, transcribeChunk } from "./ope
 import { apiFor } from "./provider";
 import { mergeChunks, parseChunkOutput, renderTranscriptMd, TranscriptParseError } from "./transcript";
 import { assignSpeakers } from "./speakers";
-import { buildNotesPrompt, NOTES_MAX_TOKENS, NotesError, splitNotesOutput, stripCodePaths } from "./notes";
+import { buildNotesPrompt, NOTES_MAX_TOKENS, NotesError, splitReportOutput, stripReportCodePaths } from "./notes";
 import { DESCRIBE_PROMPT, MAX_DESCRIBED, pickEvenly } from "./screens";
 
 export interface PipelineDeps {
@@ -203,8 +203,14 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       await save({ ...patch, codeSearch, costUsd: cost });
     }
 
+    // naming: stop so the user can name the voices before the report is written
+    if (!rec!.namesConfirmedAt && (rec!.turns?.length ?? 0) > 0) {
+      await save({ status: "naming", step: undefined, costUsd: cost });
+      return rec!;
+    }
+
     // notes
-    if (!rec!.notesMd) {
+    if (!rec!.report || !rec!.notesMd) {
       step = "notes";
       await save({ step });
       const prompt = buildNotesPrompt(
@@ -214,9 +220,9 @@ export async function processMeeting(id: string, deps: PipelineDeps): Promise<Me
       cost += c;
       await save({ costUsd: cost });
       try {
-        const { summaryMd, notesMd } = splitNotesOutput(text);
-        // The email summary carries service names only: drop any file path the model put there.
-        await save({ summaryMd: stripCodePaths(summaryMd, rec!.codeSearch), notesMd });
+        const { report, notesMd } = splitReportOutput(text);
+        // The report carries service names only: drop any file path the model put in it.
+        await save({ report: stripReportCodePaths(report, rec!.codeSearch), notesMd });
       } catch (e) {
         if (e instanceof NotesError) throw new FriendlyError(MSG_NOTES, e.message);
         throw e;
