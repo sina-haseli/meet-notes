@@ -14,8 +14,8 @@ import { audioFileName } from "./lib/download";
 import { readServicesContext } from "./lib/servicesContext";
 import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { el, saveBlob, twoClick } from "./lib/dom";
-import { voicesOf, type Clip } from "./lib/voices";
-import { clipBlob, renderVoiceCards } from "./voiceCards";
+import { voicesOf } from "./lib/voices";
+import { clipBlob, createClipPlayer, renderVoiceCards } from "./voiceCards";
 import { faNum } from "./lib/report";
 
 const SAVE_DEBOUNCE_MS = 800;
@@ -155,32 +155,11 @@ function renderBanners(r: MeetingRecord): void {
 
 // ================= voice naming =================
 
-const player = new Audio();
-let playerUrl: string | undefined;
-let finishPlay: (() => void) | undefined;
+const player = createClipPlayer((clip) => clipBlob(id, clip));
+const stopPlayer = player.stop;
+const playClip = player.play;
 let namingFor = "";
 let names: (() => Record<string, string>) | undefined;
-
-function stopPlayer(): void {
-  player.pause();
-  if (playerUrl) URL.revokeObjectURL(playerUrl);
-  playerUrl = undefined;
-  finishPlay?.();
-  finishPlay = undefined;
-}
-
-async function playClip(clip: Clip): Promise<void> {
-  const blob = await clipBlob(id, clip);
-  stopPlayer();
-  playerUrl = URL.createObjectURL(blob);
-  player.src = playerUrl;
-  await new Promise<void>((resolve, reject) => {
-    finishPlay = resolve;
-    player.onended = () => resolve();
-    player.onerror = () => reject(new Error("playback failed"));
-    player.play().catch(reject);
-  });
-}
 
 function renderNaming(r: MeetingRecord): void {
   const on = r.status === "naming";

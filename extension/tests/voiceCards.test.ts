@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { renderVoiceCards } from "../src/voiceCards";
+import { createClipPlayer, renderVoiceCards } from "../src/voiceCards";
 import type { Clip, Voice } from "../src/lib/voices";
 
 const voices: Voice[] = [
@@ -89,5 +89,44 @@ describe("renderVoiceCards", () => {
     mount();
     expect(q(1, ".vq").textContent).toBe("«<b>x</b>»");
     expect(q(1, ".vq").querySelector("b")).toBeNull();
+  });
+});
+
+describe("createClipPlayer", () => {
+  const clipA = { startMs: 0, endMs: 1000, text: "a" };
+  const clipB = { startMs: 0, endMs: 1000, text: "b" };
+  const setup = () => {
+    URL.createObjectURL = vi.fn((b: Blob) => `blob:${(b as unknown as { tag: string }).tag}`);
+    URL.revokeObjectURL = vi.fn();
+    const audio = { src: "", pause: vi.fn(), play: vi.fn(async () => undefined), onended: null, onerror: null } as never as HTMLAudioElement;
+    const pending = new Map<string, (b: Blob) => void>();
+    const load = (c: Clip) => new Promise<Blob>((r) => pending.set(c.text, (b) => r(b)));
+    const blob = (tag: string) => Object.assign(new Blob(), { tag });
+    return { audio, pending, blob, player: createClipPlayer(load, audio) };
+  };
+
+  it("does not play a clip stopped while it was being built", async () => {
+    const { audio, pending, blob, player } = setup();
+    const done = player.play(clipA);
+    player.stop();
+    pending.get("a")!(blob("a"));
+    await done;
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it("plays only the latest clip when another is pressed during the build", async () => {
+    const { audio, pending, blob, player } = setup();
+    const a = player.play(clipA);
+    player.stop();
+    const b = player.play(clipB);
+    pending.get("b")!(blob("b"));
+    await Promise.resolve();
+    await Promise.resolve();
+    pending.get("a")!(blob("a"));
+    await a;
+    expect(audio.play).toHaveBeenCalledTimes(1);
+    expect(audio.src).toBe("blob:b");
+    player.stop();
+    await b;
   });
 });

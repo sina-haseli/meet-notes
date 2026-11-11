@@ -26,6 +26,43 @@ export async function clipBlob(meetingId: string, clip: Clip): Promise<Blob> {
   return encodeMp3(pcm);
 }
 
+type AudioLike = Pick<HTMLAudioElement, "pause" | "play" | "src" | "onended" | "onerror">;
+
+/**
+ * One shared audio element. `stop` cancels anything still being built, so a clip that finishes
+ * encoding after it was cancelled (paused, or another card pressed) never plays.
+ */
+export function createClipPlayer(
+  load: (clip: Clip) => Promise<Blob>,
+  audio: AudioLike = new Audio(),
+): { play: (clip: Clip) => Promise<void>; stop: () => void } {
+  let token = 0;
+  let url: string | undefined;
+  let finish: (() => void) | undefined;
+  const stop = () => {
+    token++;
+    audio.pause();
+    if (url) URL.revokeObjectURL(url);
+    url = undefined;
+    finish?.();
+    finish = undefined;
+  };
+  const play = async (clip: Clip): Promise<void> => {
+    const mine = ++token;
+    const blob = await load(clip);
+    if (token !== mine) return;
+    url = URL.createObjectURL(blob);
+    audio.src = url;
+    await new Promise<void>((resolve, reject) => {
+      finish = resolve;
+      audio.onended = () => resolve();
+      audio.onerror = () => reject(new Error("playback failed"));
+      audio.play().catch(reject);
+    });
+  };
+  return { play, stop };
+}
+
 export function renderVoiceCards(root: HTMLElement, voices: Voice[], opts: VoiceCardOpts): { names(): Record<string, string> } {
   root.replaceChildren();
   const inputs: [string, HTMLInputElement][] = [];
