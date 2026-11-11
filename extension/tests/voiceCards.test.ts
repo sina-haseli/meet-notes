@@ -12,7 +12,7 @@ const voices: Voice[] = [
       { startMs: 2_650_000, endMs: 2_662_000, text: "سومی" },
     ],
   },
-  { key: "v2", name: "", fromMeet: false, talkMs: 80_000, share: 0.08, clips: [{ startMs: 5_000, endMs: 15_000, text: "<b>x</b>" }] },
+  { key: "گوینده ۳", name: "", fromMeet: false, talkMs: 80_000, share: 0.08, clips: [{ startMs: 5_000, endMs: 15_000, text: "<b>x</b>" }] },
 ];
 
 let root: HTMLElement;
@@ -34,6 +34,14 @@ describe("renderVoiceCards", () => {
     expect(root.querySelectorAll(".vcard").length).toBe(2);
     expect(q(0, ".vmeta").textContent).toBe("صدای ۱ · ٪۷۰ از جلسه · کلیپ ۱ از ۳ · ۱۲:۴۰ تا ۱۲:۵۲");
     expect(q(0, ".vq").textContent).toBe("«اولی»");
+  });
+
+  it("titles an unknown voice by its label, as the report writes it", () => {
+    mount();
+    expect(q(1, ".vmeta").textContent!.startsWith("گوینده ۳ · ")).toBe(true);
+    expect(q(1, ".vmeta").textContent).not.toContain("صدای");
+    expect((q(1, "input") as HTMLInputElement).placeholder).toBe("گوینده ۳");
+    expect((q(0, "input") as HTMLInputElement).placeholder).toBe("نام این فرد");
   });
 
   it("pre-fills a Meet name and flags unknown voices", () => {
@@ -96,7 +104,7 @@ describe("renderVoiceCards", () => {
   it("names() maps each key to the input value", () => {
     const api = mount();
     (q(1, "input") as HTMLInputElement).value = "مهران";
-    expect(api.names()).toEqual({ v1: "دانیال", v2: "مهران" });
+    expect(api.names()).toEqual({ v1: "دانیال", "گوینده ۳": "مهران" });
   });
 
   it("shows clip text literally", () => {

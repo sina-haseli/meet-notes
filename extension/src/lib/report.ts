@@ -29,10 +29,12 @@ const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined || v === null || v === "" ? [] : [v]);
 const strings = (v: unknown): string[] => list(v).map(str).filter((s) => s !== "");
 const opt = (v: unknown): string | undefined => { const s = str(v); return s === "" ? undefined : s; };
+/** `at` without the brackets or spaces a model may put around it: "[12:40]" → "12:40". */
+const atOf = (v: unknown): string | undefined => opt(str(v).replace(/^[\s[\]]+|[\s[\]]+$/g, ""));
 
 function item(v: unknown): Item {
   const o = typeof v === "object" ? obj(v) : { text: v };
-  const at = opt(o.at);
+  const at = atOf(o.at);
   return at === undefined ? { text: str(o.text) } : { text: str(o.text), at };
 }
 
@@ -40,7 +42,7 @@ function action(v: unknown): Action {
   const o = obj(v);
   const a: Action = { text: str(o.text), owner: str(o.owner), due: str(o.due) };
   const person = opt(o.person); if (person !== undefined) a.person = person;
-  const at = opt(o.at); if (at !== undefined) a.at = at;
+  const at = atOf(o.at); if (at !== undefined) a.at = at;
   return a;
 }
 
@@ -171,7 +173,7 @@ const mdCell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 const mdTable = (head: string[], rows: string[][]) =>
   [`| # | ${head.join(" | ")} |`, `|${" --- |".repeat(head.length + 1)}`,
     ...rows.map((r, i) => `| ${faNum(i + 1)} | ${r.map(mdCell).join(" | ")} |`)].join("\n");
-const mdAt = (at?: string) => (at ? ` [${at}]` : "");
+const mdAt = (at?: string) => (at ? ` [${faDigits(at)}]` : "");
 
 export function reportToMarkdown(r: Report, m: Meta, turns: Turn[]): string {
   const out: string[] = [`# ${r.title}`, "", ...metaLines(m, turns).map((l) => `${l}  `), ""];
@@ -218,19 +220,35 @@ export const REPORT_CSS = `.report{font-family:Vazirmatn,Tahoma,sans-serif;backg
 .report .ts{color:#aaa;font-size:11px;font-variant-numeric:tabular-nums}
 .report .footer{text-align:center;color:#999;font-size:11.5px;margin-top:18px}`;
 
+/**
+ * Inline styles for email: Gmail and most webmail drop `<style>`, so the copied report carries
+ * its look (and its right-to-left direction) on each element.
+ */
+const INLINE = {
+  report: "direction:rtl;text-align:right;font-family:Vazirmatn,Tahoma,sans-serif;color:#222;line-height:1.9",
+  h1: "color:#4f46e5;font-size:22px;margin:0 0 4px",
+  h2: "color:#4f46e5;font-size:16px;margin:18px 0 8px",
+  rule: "border-top:3px solid #4f46e5;margin:12px 0 16px;font-size:0;line-height:0",
+  table: "border-collapse:collapse;width:100%",
+  th: "background:#efeefe;color:#4f46e5;text-align:right;padding:6px 10px",
+  td: "border-bottom:1px solid #e5e5ea;padding:6px 10px;vertical-align:top",
+};
+
 export function reportToHtml(
-  r: Report, m: Meta, turns: Turn[], opts: { standalone?: boolean; timestamps?: boolean } = {},
+  r: Report, m: Meta, turns: Turn[], opts: { standalone?: boolean; timestamps?: boolean; inline?: boolean } = {},
 ): string {
   const showAt = opts.timestamps !== false;
-  const ts = (at?: string) => (showAt && at ? ` <span class="ts">[${faDigits(esc(at))}]</span>` : "");
+  const st = (k: keyof typeof INLINE) => (opts.inline ? ` style="${INLINE[k]}"` : "");
+  const ts = (at?: string) => (showAt && at ? ` <span class="ts">[${esc(faDigits(at))}]</span>` : "");
+  const td = (cls: string, c: string) => `<td${cls ? ` class="${cls}"` : ""}${st("td")}>${c}</td>`;
   const table = (head: string[], rows: string[][], classes: string[] = []) =>
-    `<table><tr><th>#</th>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>` +
-    rows.map((row, i) => `<tr><td class="n">${faNum(i + 1)}</td>${row.map((c, j) => `<td${classes[j] ? ` class="${classes[j]}"` : ""}>${c}</td>`).join("")}</tr>`).join("") +
+    `<table${st("table")}><tr><th${st("th")}>#</th>${head.map((h) => `<th${st("th")}>${esc(h)}</th>`).join("")}</tr>` +
+    rows.map((row, i) => `<tr>${td("n", faNum(i + 1))}${row.map((c, j) => td(classes[j] ?? "", c)).join("")}</tr>`).join("") +
     "</table>";
   const parts: string[] = [];
-  const section = (title: string, body: string) => parts.push(`<section><h2>${esc(title)}</h2>${body}</section>`);
+  const section = (title: string, body: string) => parts.push(`<section><h2${st("h2")}>${esc(title)}</h2>${body}</section>`);
 
-  parts.push(`<h1>${esc(r.title)}</h1>`, ...metaLines(m, turns).map((l) => `<div class="meta">${esc(l)}</div>`), `<div class="rule"></div>`);
+  parts.push(`<h1${st("h1")}>${esc(r.title)}</h1>`, ...metaLines(m, turns).map((l) => `<div class="meta">${esc(l)}</div>`), `<div class="rule"${st("rule")}></div>`);
   if (r.summary.length) section(T.summary, r.summary.map((p) => `<p>${multi(p)}</p>`).join(""));
   if (r.decisions.length) section(T.decisions, table(["تصمیم"], r.decisions.map((d) => [multi(d.text) + ts(d.at)])));
   if (r.actions.length) {
@@ -250,10 +268,10 @@ export function reportToHtml(
   }
   const rows = statRows(turns);
   section(T.stats, `<p>${esc(statTotals(m, turns))}</p>` +
-    (rows.length ? `<table>${rows.map(([n, v]) => `<tr><td class="who">${esc(n)}</td><td>${esc(v)}</td></tr>`).join("")}</table>` : ""));
+    (rows.length ? `<table${st("table")}>${rows.map(([n, v]) => `<tr>${td("who", esc(n))}${td("", esc(v))}</tr>`).join("")}</table>` : ""));
   parts.push(`<div class="footer">${FOOTER}</div>`);
 
-  const body = `<div class="report" dir="rtl" lang="fa">${parts.join("")}</div>`;
+  const body = `<div class="report" dir="rtl" lang="fa"${st("report")}>${parts.join("")}</div>`;
   if (!opts.standalone) return body;
   return `<!doctype html>\n<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${esc(r.title)}</title>` +
     `<style>body{margin:0}${REPORT_CSS}</style></head><body>${body}</body></html>`;

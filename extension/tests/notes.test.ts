@@ -53,9 +53,19 @@ describe("templates", () => {
   it("neverReplacesSpeakerLabelsWithNames", () => {
     const rule =
       "Never replace a `گوینده N` label with a participant name, even if the participants list suggests who it might be. " +
-      "A person section or item for an uncertain speaker uses the `گوینده N` label and is marked (uncertain).";
+      "A person section or item for an uncertain speaker uses the `گوینده N` label; only the English notes add the (uncertain) marker.";
     expect(Object.keys(TEMPLATES).sort()).toEqual(["daily", "grooming", "planning", "technical"]);
     for (const t of Object.values(TEMPLATES)) expect(t).toContain(rule);
+  });
+  it("scopes the (uncertain) marker to the English notes and keeps legacy labels", () => {
+    for (const t of Object.values(TEMPLATES)) {
+      expect(t).toContain(
+        "- in the English notes, items attributed to uncertain speakers keep the `(uncertain)` marker; " +
+          "in the Persian report, an unknown speaker is written only by their `گوینده N` label, with no English marker",
+      );
+      expect(t).not.toContain("- items attributed to uncertain speakers keep the `(uncertain)` marker");
+      expect(t).toContain("Keep any legacy `Speaker N` label exactly as written.");
+    }
   });
   it("use the new markers", () => {
     for (const t of Object.values(TEMPLATES)) {

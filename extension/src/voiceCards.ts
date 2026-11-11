@@ -77,6 +77,8 @@ export function renderVoiceCards(root: HTMLElement, voices: Voice[], opts: Voice
     let i = 0;
     let playing = false;
     let run = 0;
+    // An unknown voice is titled by its label (گوینده N), the same N the report will write.
+    const title = v.name ? `صدای ${faNum(n + 1)}` : v.key;
     const card = el("div", `vcard${v.name ? "" : " unk"}`);
     const playBtn = el("button", "vbtn play", "▶");
     playBtn.type = "button";
@@ -94,9 +96,9 @@ export function renderVoiceCards(root: HTMLElement, voices: Voice[], opts: Voice
     next.type = "button";
     next.title = "کلیپ دیگر";
     const input = el("input");
-    input.placeholder = "نام این فرد";
+    input.placeholder = v.name ? "نام این فرد" : v.key;
     input.value = v.name;
-    input.setAttribute("aria-label", `نام صدای ${fa(String(n + 1))}`);
+    input.setAttribute("aria-label", `نام ${title}`);
     const hint = el("div", `vhint${v.name ? "" : " warn"}`, v.name ? "" : "نامشخص — لطفاً نام بدهید");
     // Meet's suggestion is labelled as such only while the box still holds it.
     const meetHint = () => {
@@ -120,7 +122,7 @@ export function renderVoiceCards(root: HTMLElement, voices: Voice[], opts: Voice
     };
     const show = () => {
       const c = v.clips[i];
-      meta.textContent = `صدای ${faNum(n + 1)} · ٪${faNum(Math.round(v.share * 100))} از جلسه · کلیپ ${faNum(i + 1)} از ${faNum(v.clips.length)} · ${fa(mmss(c.startMs))} تا ${fa(mmss(c.endMs))}`;
+      meta.textContent = `${title} · ٪${faNum(Math.round(v.share * 100))} از جلسه · کلیپ ${faNum(i + 1)} از ${faNum(v.clips.length)} · ${fa(mmss(c.startMs))} تا ${fa(mmss(c.endMs))}`;
       quote.textContent = `«${c.text}»`;
     };
     const start = () => {

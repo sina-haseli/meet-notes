@@ -27,15 +27,21 @@ export function renamePatch(
 ): Pick<MeetingRecord, "turns" | "report" | "notesMd"> | null {
   const changed = Object.entries(names)
     .map(([old, typed]) => [old, typed.trim()] as const)
-    .filter(([old, next]) => next !== "" && next !== old)
-    .sort((a, b) => b[0].length - a[0].length); // "علی رضایی" before "علی"
+    .filter(([old, next]) => next !== "" && next !== old);
   if (!changed.length) return null;
+  const to = new Map(changed);
 
-  // Old names go to placeholders first, then to the new names, so swapping two names never merges them.
+  // Every current name goes to a placeholder first (longest first, so "علی رضایی" is taken before
+  // "علی"), then each comes back as its new name or as itself. An unchanged name that contains a
+  // changed one ("علی رضایی", "علی‌رضا") is therefore never rewritten, and swapping two names never
+  // merges them.
+  const current = [...new Set([...Object.keys(names), ...(rec.turns ?? []).map((t) => t.speaker)])]
+    .filter((n) => n !== "")
+    .sort((a, b) => b.length - a.length);
   const both = <T>(v: T, f: (v: T, old: string, next: string) => T): T => {
     let out = v;
-    changed.forEach(([old], i) => (out = f(out, old, token(i))));
-    changed.forEach(([, next], i) => (out = f(out, token(i), next)));
+    current.forEach((old, i) => (out = f(out, old, token(i))));
+    current.forEach((old, i) => (out = f(out, token(i), to.get(old) ?? old)));
     return out;
   };
   const patch: Pick<MeetingRecord, "turns" | "report" | "notesMd"> = {

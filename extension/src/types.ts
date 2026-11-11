@@ -1,6 +1,6 @@
 import type { Report } from "./lib/report";
 
-export type MeetingType ="grooming" | "planning" | "technical" | "daily";
+export type MeetingType = "grooming" | "planning" | "technical" | "daily";
 export type MeetingStatus = "recording" | "interrupted" | "queued" | "processing" | "naming" | "ready" | "error";
 export type Step = "chunking" | "transcribing" | "speakers" | "screens" | "code" | "notes" | "done";
 export interface ChunkPlan { index: number; offsetMs: number; durationMs: number }

@@ -595,7 +595,10 @@ function render(r: MeetingRecord, overwrite = false): void {
     $<HTMLButtonElement>(b).disabled = isWorking(r) && b !== "copyTranscript" && b !== "downloadTranscript";
   }
   $<HTMLButtonElement>("renameSpeakers").disabled = !canRenameLater(r);
-  if (!reportDraft) $<HTMLButtonElement>("pdfReport").disabled = true;
+  if (!reportDraft) {
+    $<HTMLButtonElement>("pdfReport").disabled = true;
+    $<HTMLButtonElement>("copyReport").disabled = true;
+  }
 }
 
 // ================= actions =================
@@ -648,7 +651,7 @@ btn("copyReport").addEventListener("click", () =>
   guarded(btn("copyReport"), "کپی شد", async () => {
     if (!rec || !reportDraft) return;
     const turns = rec.turns ?? [];
-    await copyRich(reportToHtml(reportDraft, rec, turns, { timestamps: false }), reportToMarkdown(reportDraft, rec, turns));
+    await copyRich(reportToHtml(reportDraft, rec, turns, { timestamps: false, inline: true }), reportToMarkdown(reportDraft, rec, turns));
   }),
 );
 btn("pdfReport").addEventListener("click", async () => {

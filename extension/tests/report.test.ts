@@ -31,6 +31,16 @@ describe("parseReport", () => {
     expect("extra" in r).toBe(false);
     expect("junk" in r.actions[0]).toBe(false);
   });
+  it("strips brackets and spaces around `at`", () => {
+    const r = parseReport(JSON.stringify({
+      decisions: [{ text: "a", at: "[12:40]" }, { text: "b", at: " [ 03:05 ] " }, { text: "c", at: "[]" }],
+      actions: [{ text: "x", owner: "", due: "", at: "[01:02]" }],
+      followUps: [{ text: "f", at: " 07:08 " }],
+    }));
+    expect(r.decisions).toEqual([{ text: "a", at: "12:40" }, { text: "b", at: "03:05" }, { text: "c" }]);
+    expect(r.actions[0].at).toBe("01:02");
+    expect(r.followUps[0].at).toBe("07:08");
+  });
   it("throws NotesError without an object", () => {
     expect(() => parseReport("no json")).toThrow(NotesError);
   });
@@ -88,6 +98,27 @@ describe("reportToHtml", () => {
     expect(reportToHtml(r, rec, turns, { timestamps: false })).not.toContain("[");
     expect(reportToHtml({ ...r, decisions: [] }, rec, turns)).not.toContain("تصمیم‌ها");
   });
+  it("inline writes style attributes for email and still escapes", () => {
+    const r = {
+      ...empty, title: "<img src=x onerror=alert(1)>",
+      decisions: [{ text: "<img src=x onerror=alert(1)>", at: "05:07" }],
+      actions: [{ text: "کار", owner: "علی", due: "" }],
+    };
+    const html = reportToHtml(r, rec, turns, { inline: true, timestamps: false });
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
+    expect(html).toMatch(/^<div class="report" dir="rtl" lang="fa" style="direction:rtl;text-align:right;font-family:Vazirmatn,Tahoma,sans-serif[^"]*">/);
+    expect(html).toMatch(/<h1 style="[^"]*color:#4f46e5/);
+    expect(html).toMatch(/<h2 style="[^"]*color:#4f46e5/);
+    expect(html).toMatch(/<div class="rule" style="[^"]*#4f46e5/);
+    expect(html).toMatch(/<table style="border-collapse:collapse;width:100%/);
+    expect(html).toMatch(/<th style="background:#efeefe;color:#4f46e5;text-align:right;padding:6px 10px/);
+    expect(html).toMatch(/<td class="n" style="border-bottom:1px solid #e5e5ea;padding:6px 10px;vertical-align:top/);
+    expect(html).toMatch(/<td style="border-bottom:1px solid #e5e5ea;padding:6px 10px;vertical-align:top/);
+    expect(html.match(/<th[ >]/g)!.length).toBe(html.match(/<th style=/g)!.length);
+    expect(html.match(/<td[ >]/g)!.length).toBe(html.match(/<td[^>]* style=/g)!.length);
+    expect(reportToHtml(r, rec, turns)).not.toContain("style=");
+  });
   it("standalone is a full rtl page with inline css", () => {
     const html = reportToHtml(empty, rec, turns, { standalone: true });
     expect(html.startsWith("<!doctype html>")).toBe(true);
@@ -105,6 +136,19 @@ describe("reportToHtml", () => {
 });
 
 describe("reportToMarkdown", () => {
+  it("writes timestamps in Persian digits", () => {
+    const r: Report = {
+      ...empty, title: "T",
+      decisions: [{ text: "تصمیم", at: "12:40" }],
+      actions: [{ text: "کار", owner: "", due: "", at: "01:05" }],
+      followUps: [{ text: "پیگیری", at: "33:09" }],
+    };
+    const md = reportToMarkdown(r, rec, []);
+    expect(md).toContain("تصمیم [۱۲:۴۰]");
+    expect(md).toContain("کار [۰۱:۰۵]");
+    expect(md).toContain("پیگیری [۳۳:۰۹]");
+    expect(md).not.toMatch(/\[\d/);
+  });
   it("renders the daily layout", () => {
     const r: Report = {
       ...empty, title: "دیلی",

@@ -61,6 +61,48 @@ describe("renamePatch", () => {
     expect(p.report!.actions[0].owner).toBe("سینا");
   });
 
+  it("renames one name without touching other speakers whose names contain it", () => {
+    const others = ["علی رضایی", "علی‌رضا", "علیرضا"];
+    const r = {
+      turns: [turn("علی", 0, 10_000), ...others.map((n, i) => turn(n, (i + 1) * 10_000, (i + 2) * 10_000))],
+      report: {
+        ...report,
+        title: "جلسه علی و علی رضایی",
+        summary: ["علی، علی رضایی، علی‌رضا و علیرضا آمدند."],
+        actions: [
+          { text: "کار", owner: "علی رضایی", due: "" },
+          { text: "کار", owner: "علی‌رضا", due: "" },
+          { text: "کار", owner: "علیرضا", due: "" },
+          { text: "کار", owner: "علی", due: "" },
+        ],
+      },
+      notesMd: "علی, علی رضایی, علی‌رضا and علیرضا attended.",
+    } as unknown as MeetingRecord;
+    const names = Object.fromEntries(["علی", ...others].map((n) => [n, n]));
+    const p = renamePatch(r, { ...names, "علی": "X" })!;
+    expect(p.turns!.map((t) => t.speaker)).toEqual(["X", ...others]);
+    expect(p.report!.title).toBe("جلسه X و علی رضایی");
+    expect(p.report!.summary[0]).toBe("X، علی رضایی، علی‌رضا و علیرضا آمدند.");
+    expect(p.report!.actions.map((a) => a.owner)).toEqual([...others, "X"]);
+    expect(p.notesMd).toBe("X, علی رضایی, علی‌رضا and علیرضا attended.");
+    // A speaker missing from `names` is protected too.
+    const q = renamePatch(r, { "علی": "X" })!;
+    expect(q.report!.summary[0]).toBe("X، علی رضایی، علی‌رضا و علیرضا آمدند.");
+    expect(q.notesMd).toBe("X, علی رضایی, علی‌رضا and علیرضا attended.");
+  });
+
+  it("swaps two names while a third that contains one of them stays", () => {
+    const r = {
+      turns: [turn("علی", 0, 1000), turn("سینا", 1000, 2000), turn("علی رضایی", 2000, 3000)],
+      report: { ...report, title: "علی، سینا و علی رضایی" },
+      notesMd: "علی then سینا then علی رضایی",
+    } as unknown as MeetingRecord;
+    const p = renamePatch(r, { "علی": "سینا", "سینا": "علی", "علی رضایی": "علی رضایی" })!;
+    expect(p.turns!.map((t) => t.speaker)).toEqual(["سینا", "علی", "علی رضایی"]);
+    expect(p.report!.title).toBe("سینا، علی و علی رضایی");
+    expect(p.notesMd).toBe("سینا then علی then علی رضایی");
+  });
+
   it("leaves a missing report or notes absent", () => {
     const p = renamePatch({ ...rec, report: undefined, notesMd: undefined }, { "سینا": "علی" })!;
     expect("report" in p).toBe(false);

@@ -574,7 +574,7 @@ async function processed(msg: Extract<FromOffscreen, { type: "processed" }>): Pr
   }
   if (rec && (msg.status === "naming" || !(await meetingTabOpen(rec.id)))) {
     const options: chrome.notifications.NotificationCreateOptions = msg.status === "naming"
-      ? { type: "basic", iconUrl: notifyIcon(), title: "نام گوینده‌ها را تأیید کنید", message: rec.title }
+      ? { type: "basic", iconUrl: notifyIcon(), title: "نام گوینده‌ها را تأیید کنید", message: rec.title || "Your meeting" }
       : msg.ok
       ? { type: "basic", iconUrl: notifyIcon(), title: "Notes ready", message: rec.title || "Your meeting" }
       : {
