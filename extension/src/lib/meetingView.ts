@@ -11,7 +11,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function replaceWholeName(text: string, old: string, next: string): string {
+export function replaceWholeName(text: string, old: string, next: string): string {
   if (!old) return text;
   const re = new RegExp(`(?<!${WORD})${escapeRegExp(old)}(?!${WORD})`, "gu");
   return text.replace(re, () => next); // a function replacer: `$` in the new name stays literal

@@ -1,4 +1,6 @@
-export type MeetingType = "grooming" | "planning" | "technical" | "daily";
+import type { Report } from "./lib/report";
+
+export type MeetingType ="grooming" | "planning" | "technical" | "daily";
 export type MeetingStatus = "recording" | "interrupted" | "queued" | "processing" | "ready" | "error";
 export type Step = "chunking" | "transcribing" | "speakers" | "screens" | "code" | "notes" | "done";
 export interface ChunkPlan { index: number; offsetMs: number; durationMs: number }
@@ -51,6 +53,7 @@ export interface MeetingRecord {
   screens?: ScreenDesc[];
   codeSearch?: CodeSearch;
   summaryMd?: string; notesMd?: string;
+  report?: Report;
   pcmSamples: number;               // timeline end of the persisted 16 kHz samples
   readyAt?: number; audioDeleted?: boolean;
   helperId?: string;                // helper-mode stub only
