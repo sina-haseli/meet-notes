@@ -5,14 +5,15 @@ import type { MeetingRecord, Turn } from "../src/types";
 import type { Settings } from "../src/lib/settings";
 import { SERVICES_NOTICE } from "../src/lib/servicesSnapshot";
 
-const SUMMARY_OK = "<<<SUMMARY>>>\nSummary\n<<<NOTES>>>\n# Notes";
+const SUMMARY_OK = '<<<REPORT>>>\n{"title":"ت"}\n<<<NOTES>>>\n# Notes';
 const ONE_TURN = '[{"start":"00:01","end":"00:03","speaker":"S1","text":"hello"}]';
 
 function rec(over: Partial<MeetingRecord> = {}): MeetingRecord {
   return {
     id: "m1", mode: "builtin", title: "T", type: "daily", startedAt: "2026-11-06T10:00:00+03:30",
     durationMs: 1200000, selfName: "S", participants: [], status: "queued", costUsd: 0,
-    speakerLog: [], servicesContext: null, pcmSamples: 16000 * 1200, createdAt: 1, ...over,
+    speakerLog: [], servicesContext: null, pcmSamples: 16000 * 1200, createdAt: 1,
+    namesConfirmedAt: 1, ...over,
   };
 }
 
@@ -57,7 +58,8 @@ describe("processMeeting", () => {
     expect(out.chunks).toHaveLength(2);
     expect(out.turns!.length).toBeGreaterThan(0);
     expect(out.screens).toEqual([{ atMs: 1000, description: "A screen" }, { atMs: 2000, description: "A screen" }]);
-    expect(out.summaryMd).toBe("Summary");
+    expect(out.report?.title).toBe("ت");
+    expect(out.summaryMd).toBeUndefined();
     expect(out.notesMd).toBe("# Notes");
     expect(out.error).toBeUndefined();
     expect(out.costUsd).toBeCloseTo(0.01 * 2 + 0.002 * 2 + 0.1, 9);
@@ -200,6 +202,53 @@ describe("processMeeting", () => {
   });
 });
 
+describe("naming pause", () => {
+  it("stopsForNamesBeforeNotes", async () => {
+    const s = setup({ namesConfirmedAt: undefined }, { screens: 1 });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("naming");
+    expect(out.step).toBeUndefined();
+    expect(out.screens).toHaveLength(1);
+    expect(out.codeSearch).toBeDefined();
+    expect(out.report).toBeUndefined();
+    expect(out.costUsd).toBeCloseTo(0.01 * 2 + 0.002, 9);
+    expect(s.complete).not.toHaveBeenCalled();
+  });
+
+  it("confirmedNamesFinishTheReport", async () => {
+    const s = setup({ namesConfirmedAt: undefined });
+    await processMeeting("m1", s.deps);
+    await s.deps.db.updateMeeting("m1", { namesConfirmedAt: 1 });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(out.report?.title).toBe("ت");
+    expect(out.notesMd).toBe("# Notes");
+    expect(out.summaryMd).toBeUndefined();
+    expect(s.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("noTurnsSkipsThePause", async () => {
+    const transcribe = vi.fn(async () => ({ text: "[]", cost: 0 }));
+    const s = setup({ namesConfirmedAt: undefined }, { transcribe });
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+    expect(s.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("retryAfterNotesErrorDoesNotPauseAgain", async () => {
+    let n = 0;
+    const complete = vi.fn(async () => {
+      if (++n === 1) throw new OpenRouterError("busy", "d", 503);
+      return { text: SUMMARY_OK, cost: 0.1 };
+    });
+    const s = setup({}, { complete });
+    expect((await processMeeting("m1", s.deps)).status).toBe("error");
+    expect(s.get().step).toBe("notes");
+    const out = await processMeeting("m1", s.deps);
+    expect(out.status).toBe("ready");
+  });
+});
+
 describe("code step", () => {
   const DIR = { name: "services" } as unknown as FileSystemDirectoryHandle;
   const MASERATI = {
@@ -324,17 +373,18 @@ describe("code step", () => {
     expect(extractKeywords).toHaveBeenCalledTimes(2);
   });
 
-  it("summaryLosesFilePaths", async () => {
+  it("reportLosesFilePaths", async () => {
     const complete = vi.fn(async () => ({
-      text: "<<<SUMMARY>>>\nخلاصه\n- maserati — کیف پول (maserati/wallet.go)\n- maserati/internal/pay.go\n<<<NOTES>>>\n# Notes\n- maserati/wallet.go",
+      text: '<<<REPORT>>>\n{"title":"ت","summary":["maserati — کیف پول (maserati/wallet.go)","maserati/internal/pay.go"]}\n<<<NOTES>>>\n# Notes\n- maserati/wallet.go',
       cost: 0.1,
     }));
     const s = on({}, { complete });
     const out = await processMeeting("m1", s.deps);
     expect(out.status).toBe("ready");
-    expect(out.summaryMd).not.toContain("wallet.go");
-    expect(out.summaryMd).not.toContain("pay.go");
-    expect(out.summaryMd).toContain("maserati — کیف پول");
+    const text = JSON.stringify(out.report);
+    expect(text).not.toContain("wallet.go");
+    expect(text).not.toContain("pay.go");
+    expect(text).toContain("maserati — کیف پول");
     // the AI notes keep their paths
     expect(out.notesMd).toContain("maserati/wallet.go");
   });

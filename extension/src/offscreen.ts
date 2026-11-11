@@ -4,7 +4,7 @@
 //   failed upload can be retried.
 // - Built-in mode (persist true): 16 kHz PCM slices, WebM chunks and screens are written to
 //   IndexedDB as they arrive (crash-safe), and finished meetings are processed here one at a time.
-import type { Screen, SpeakerInterval, UploadMeta } from "./types";
+import type { MeetingStatus, Screen, SpeakerInterval, UploadMeta } from "./types";
 import type {
   Ack,
   ExportAudioAck,
@@ -409,8 +409,11 @@ async function upload(token: string, url: string): Promise<void> {
 
 // ---------- built-in processing queue ----------
 
-function enqueue(id: string): void {
-  if (processingId !== id && !queue.includes(id)) queue.push(id);
+function enqueue(id: string, front = false): void {
+  if (processingId !== id && !queue.includes(id)) {
+    if (front) queue.unshift(id);
+    else queue.push(id);
+  }
   void drain();
 }
 
@@ -419,16 +422,16 @@ async function drain(): Promise<void> {
   while (queue.length > 0) {
     const id = queue.shift() as string;
     processingId = id;
-    let ok = false;
+    let status: MeetingStatus = "error";
     try {
       // Fresh deps (and settings) per run, so a Retry after fixing Settings uses the new values.
-      ok = (await processMeeting(id, defaultPipelineDeps(fetchSettings))).status === "ready";
+      status = (await processMeeting(id, defaultPipelineDeps(fetchSettings))).status;
     } catch (e) {
       console.warn("processing failed", e); // processMeeting should never throw
     } finally {
       processingId = null;
     }
-    report({ target: "background", type: "processed", meetingId: id, ok });
+    report({ target: "background", type: "processed", meetingId: id, ok: status === "ready", status });
   }
   reportIfIdle();
 }
@@ -478,7 +481,7 @@ async function handle(msg: ToOffscreen): Promise<Ack | OffscreenStartAck | Expor
     case "stop-builtin":
       return withStop(() => stopBuiltin(msg));
     case "process": {
-      enqueue(msg.meetingId);
+      enqueue(msg.meetingId, msg.front === true);
       return { ok: true };
     }
   }

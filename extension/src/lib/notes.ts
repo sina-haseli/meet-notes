@@ -1,7 +1,9 @@
 import type { CodeSearch, MeetingRecord, ScreenDesc } from "../types";
 import { TEMPLATES } from "./templates";
+import { mapReportText, parseReport, type Report } from "./report";
 
 export const SUMMARY_MARK = "<<<SUMMARY>>>";
+export const REPORT_MARK = "<<<REPORT>>>";
 export const NOTES_MARK = "<<<NOTES>>>";
 export const NOTES_MAX_TOKENS = 16000;
 
@@ -127,4 +129,20 @@ export function splitNotesOutput(text: string): { summaryMd: string; notesMd: st
   const notesMd = text.slice(n + NOTES_MARK.length).trim();
   if (!summaryMd || !notesMd) throw new NotesError("The notes answer has an empty summary or notes section");
   return { summaryMd, notesMd };
+}
+
+/** `<<<REPORT>>>` + one JSON object + `<<<NOTES>>>` + English notes. */
+export function splitReportOutput(text: string): { report: Report; notesMd: string } {
+  const r = text.indexOf(REPORT_MARK);
+  const n = r !== -1 ? text.indexOf(NOTES_MARK, r + REPORT_MARK.length) : -1;
+  if (r === -1 || n === -1) throw new NotesError("The notes answer is missing the report / notes markers");
+  const reportRaw = text.slice(r + REPORT_MARK.length, n).trim();
+  const notesMd = text.slice(n + NOTES_MARK.length).trim();
+  if (!reportRaw || !notesMd) throw new NotesError("The notes answer has an empty report or notes section");
+  return { report: parseReport(reportRaw), notesMd };
+}
+
+/** The same rule as the old summary: no evidence file path survives in any report string. */
+export function stripReportCodePaths(r: Report, cs: CodeSearch | undefined): Report {
+  return mapReportText(r, (s) => stripCodePaths(s, cs));
 }

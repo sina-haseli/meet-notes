@@ -79,6 +79,13 @@ describe("db", () => {
     expect((await getPcmRange("err", 0, 9)).length).toBe(1);
     expect(await deleteAudio("new")).toBeUndefined();
   });
+  it("pruneExpiredAudioKeepsNamingMeetings", async () => {
+    const now = 100 * DAY;
+    await putMeeting(rec("nm", { status: "naming", createdAt: now - 40 * DAY, readyAt: now - 40 * DAY }));
+    await putPcm("nm", 1, new Int16Array(2));
+    expect(await pruneExpiredAudio(now)).toEqual([]);
+    expect((await getPcmRange("nm", 0, 9)).length).toBe(1);
+  });
   it("handles", async () => {
     const h = { kind: "directory", name: "x" } as unknown as FileSystemDirectoryHandle;
     await putHandle("k", h);

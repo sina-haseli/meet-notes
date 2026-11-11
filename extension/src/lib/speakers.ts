@@ -1,5 +1,7 @@
 import type { SpeakerInterval, Turn } from "../types";
 
+export const UNKNOWN_PREFIX = "گوینده";
+
 function overlap(aStart: number, aEnd: number, bStart: number, bEnd: number): number {
   return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
 }
@@ -51,7 +53,7 @@ export function assignSpeakers(
     if (name !== null) return { ...t, speaker: name, uncertain: false };
     let n = numbers.get(key);
     if (n === undefined) { n = numbers.size + 1; numbers.set(key, n); }
-    return { ...t, speaker: `Speaker ${n}`, uncertain: true };
+    return { ...t, speaker: `${UNKNOWN_PREFIX} ${n.toLocaleString("fa-IR")}`, uncertain: true };
   });
 }
 

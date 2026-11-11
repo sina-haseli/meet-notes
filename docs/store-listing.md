@@ -4,17 +4,19 @@
 
 - **Name:** Meet Notes
 - **Category:** Productivity
-- **Short description (max 132 chars):** Record a Google Meet and get a Persian summary, English notes and a transcript. Your key, your data, no account.
-- **Single purpose:** Record the Google Meet meeting the user chooses and turn it into a transcript, a summary and meeting notes.
+- **Short description (max 132 chars):** Record a Google Meet and get a Persian report, English notes and a transcript. Your key, your data, no account.
+- **Single purpose:** Record the Google Meet meeting the user chooses and turn it into a transcript, a report and meeting notes.
 
 ## Detailed description
 
 Meet Notes records a Google Meet meeting when you press Start and, when you press Stop, turns it into:
 
-- a **Summary** (Persian, with English technical terms kept as spoken) ready to paste into an email,
+- a **Persian report** (English technical terms kept as spoken) with a summary, decisions, actions with owner and deadline when they were said, notes by topic, follow-ups and meeting statistics; a Daily meeting keeps yesterday / today / blockers for each person. You can edit any text in place, copy it into an email, or save it as a **PDF** with Chrome's Save as PDF,
 - **AI notes** (English) following a template for your meeting type: Grooming, Planning, Technical or Daily,
 - a **Transcript** with speaker names and timestamps,
 - **Screens**: images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to your AI provider to be described, each with a short description.
+
+Before the report is written, processing pauses and a notification asks you to name the voices: each voice has a short clip to play, with a button for another clip. Names from Google Meet are pre-filled, and you can rename them later. The extension does not recognise voices across meetings.
 
 How it works: setup takes three steps (your AI provider and key: OpenRouter, AvalAI or any OpenAI-compatible service; your name in Meet, and optionally a services folder so notes use your real service names; an optional switch, “Suggest where to change the code”, also searches that folder's code and sends the paths of matching files and short snippets of matching lines, with secrets masked, to your AI provider with the meeting). Processing runs inside Chrome and uses your own API key, so there is no Meet Notes account and no Meet Notes server. If you close Chrome mid-processing, it resumes when you reopen it.
 
@@ -40,11 +42,11 @@ Please tell the people in your meeting that you are recording.
 
 ## Data usage disclosures (Privacy tab)
 
-- **Data types collected:** Website content (audio of the meeting; screenshots, i.e. images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to the AI provider to be described; participant names on the Meet page); Authentication information (the user's AI provider API key); Personal communications (meeting audio and transcripts); Website content also covers, only when the user turns on “Suggest where to change the code”, the file paths and short masked code snippets from the services folder the user chose (config files by path only; `.env`, key files and lockfiles are never read). Tick nothing else.
+- **Data types collected:** Website content (audio of the meeting; screenshots, i.e. images of the Meet tab (the shared screen and participants' video) when the picture changes; up to 60 per meeting are sent to the AI provider to be described; participant names on the Meet page and the speaker names the user types on the voice cards); Authentication information (the user's AI provider API key); Personal communications (meeting audio and transcripts); Website content also covers, only when the user turns on “Suggest where to change the code”, the file paths and short masked code snippets from the services folder the user chose (config files by path only; `.env`, key files and lockfiles are never read). Tick nothing else.
 - **Is data sold to third parties?** No.
 - **Used or transferred for purposes unrelated to the single purpose?** No.
 - **Used or transferred to determine creditworthiness or for lending?** No.
-- **Where does it go?** Only to the AI provider the user chooses (OpenRouter by default, AvalAI, or an OpenAI-compatible service at an https address the user enters), to make the notes, using the user's own key: the audio, up to 60 screenshots of the Meet tab per meeting (shared screen and participants' video), speaker names and the optional services text. If the user turns on “Suggest where to change the code”, the paths of matching files and short snippets of matching lines from the services folder's code (secrets masked; config files only by path, never their content) are also sent, only for grooming, planning and technical meetings. Everything else stays in the user's browser.
+- **Where does it go?** Only to the AI provider the user chooses (OpenRouter by default, AvalAI, or an OpenAI-compatible service at an https address the user enters), to make the notes, using the user's own key: the audio, up to 60 screenshots of the Meet tab per meeting (shared screen and participants' video), speaker names, the transcript text with the speaker names (to write the report and notes) and the optional services text. Voice clips on the naming cards are played locally and are not sent. If the user turns on “Suggest where to change the code”, the paths of matching files and short snippets of matching lines from the services folder's code (secrets masked; config files only by path, never their content) are also sent, only for grooming, planning and technical meetings. Everything else stays in the user's browser.
 - **Certify:** Limited Use compliance, and that the data usage follows the Developer Program Policies.
 - **Privacy policy URL:** publish `docs/privacy-policy.md` (for example on GitHub Pages) and paste its URL. Fill in the contact email first.
 
@@ -53,10 +55,11 @@ Please tell the people in your meeting that you are recording.
 - [ ] Setup, step 1 (AI provider and key connected)
 - [ ] Popup in Idle with type chips and Recent meetings
 - [ ] Popup while recording (timer and Stop)
-- [ ] Meeting page: Summary tab (Persian)
+- [ ] Meeting page: Persian report tab
+- [ ] Meeting page: voice naming cards
 - [ ] Meeting page: AI notes tab
 - [ ] Optional: promo tile 440x280; the 128x128 icon is `extension/icons/128.png`
 
 ## Third-party licences
 
-The package bundles `@breezystack/lamejs` (MP3 encoder), licensed **LGPL-3.0**, plus `marked` (MIT) and `fflate` (MIT). `THIRD_PARTY_NOTICES.md` is included in the package zip and lists them with their full licence texts (MIT for both, LGPL-3.0 and the GPL-3.0 it incorporates). The LGPL library is used unmodified, its source is public (https://github.com/breezystack/lamejs), and the project's source and `package-lock.json` let anyone rebuild with a replacement. Keep the notices file in every upload.
+The package bundles `@breezystack/lamejs` (MP3 encoder), licensed **LGPL-3.0**, plus `marked` (MIT), `fflate` (MIT) and the Vazirmatn font (SIL Open Font License 1.1). `THIRD_PARTY_NOTICES.md` is included in the package zip and lists them with their full licence texts (MIT for both, SIL OFL 1.1, LGPL-3.0 and the GPL-3.0 it incorporates). The LGPL library is used unmodified, its source is public (https://github.com/breezystack/lamejs), and the project's source and `package-lock.json` let anyone rebuild with a replacement. Keep the notices file in every upload.

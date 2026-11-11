@@ -35,11 +35,13 @@ function item(r: MeetingRecord): HTMLElement {
   const step = stepText(r);
   if (step) {
     main.append(el("div", "mn-t2", step));
-    const bar = el("div", "mn-progress");
-    const fill = el("span");
-    fill.style.width = `${Math.round(progressFor(r) * 100)}%`;
-    bar.append(fill);
-    main.append(bar);
+    if (r.status !== "naming") {
+      const bar = el("div", "mn-progress");
+      const fill = el("span");
+      fill.style.width = `${Math.round(progressFor(r) * 100)}%`;
+      bar.append(fill);
+      main.append(bar);
+    }
   } else if (r.status === "error") {
     const err = el("div", "mn-t2 err", r.error || "Processing failed. Open it to retry.");
     err.title = r.error ?? "";

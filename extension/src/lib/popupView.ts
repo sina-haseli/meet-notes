@@ -75,6 +75,7 @@ function chunkProgress(r: MeetingRecord): { done: number; n: number } | null {
 /** The step line of a queued/processing meeting, or null for any other status. */
 export function stepText(r: MeetingRecord): string | null {
   if (r.status === "queued") return "Queued…";
+  if (r.status === "naming") return "منتظر نام گوینده‌ها";
   if (r.status !== "processing") return null;
   switch (r.step) {
     case "transcribing": {
@@ -130,6 +131,8 @@ export function badgeFor(r: MeetingRecord): { cls: BadgeClass; text: string } {
       return { cls: "processing", text: "Queued" };
     case "processing":
       return { cls: "processing", text: "Processing" };
+    case "naming":
+      return { cls: "processing", text: "منتظر نام گوینده‌ها" };
     case "error":
       return { cls: "error", text: "Failed" };
     case "interrupted":

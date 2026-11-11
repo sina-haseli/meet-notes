@@ -3,6 +3,7 @@ import { listPackageFiles } from "../scripts/packageFiles.mjs";
 import manifestRaw from "../manifest.json?raw";
 import packageRaw from "../package.json?raw";
 import notices from "../THIRD_PARTY_NOTICES.md?raw";
+import buildSrc from "../build.mjs?raw";
 
 const manifest = {
   icons: { "16": "icons/16.png", "128": "icons/128.png" },
@@ -53,5 +54,12 @@ describe("store package metadata", () => {
     expect(notices).toContain("4. Combined Works.");
     expect(notices).toContain("GNU GENERAL PUBLIC LICENSE");
     expect(notices).toContain("17. Interpretation of Sections 15 and 16.");
+  });
+
+  it("bundles the Vazirmatn font and its licence", () => {
+    expect(notices).toContain("Vazirmatn");
+    expect(notices).toContain("SIL OPEN FONT LICENSE");
+    expect(buildSrc).toContain("Vazirmatn");
+    expect(buildSrc).toContain("dist/fonts");
   });
 });

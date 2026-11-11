@@ -19,7 +19,7 @@ describe("speakers", () => {
 
   it("no log gives numbered uncertain speakers", () => {
     const out = assignSpeakers([T(0, 1000, "S1"), T(1000, 2000, "S2"), T(2000, 3000, "S1")], []);
-    expect(out.map((t) => t.speaker)).toEqual(["Speaker 1", "Speaker 2", "Speaker 1"]);
+    expect(out.map((t) => t.speaker)).toEqual(["گوینده ۱", "گوینده ۲", "گوینده ۱"]);
     expect(out.every((t) => t.uncertain)).toBe(true);
   });
 
@@ -30,7 +30,7 @@ describe("speakers", () => {
   });
 
   it("rename merges into existing name and clears uncertain", () => {
-    const out = renameSpeaker([U(0, 1, "Speaker 4", "a", true), U(1, 2, "Reza", "b")], "Speaker 4", "Reza");
+    const out = renameSpeaker([U(0, 1, "گوینده ۴", "a", true), U(1, 2, "Reza", "b")], "گوینده ۴", "Reza");
     expect(new Set(out.map((t) => t.speaker))).toEqual(new Set(["Reza"]));
     expect(out.some((t) => t.uncertain)).toBe(false);
   });
@@ -38,13 +38,13 @@ describe("speakers", () => {
   it("split overlap below share is uncertain and numbering is global", () => {
     const log = [iv("Reza", 0, 2000), iv("Sara", 2000, 4000)];
     const out = assignSpeakers([T(0, 4000, "S1", 0), T(0, 4000, "S1", 1), T(0, 4000, "S2", 1)], log);
-    expect(out.map((t) => t.speaker)).toEqual(["Speaker 1", "Speaker 2", "Speaker 3"]);
+    expect(out.map((t) => t.speaker)).toEqual(["گوینده ۱", "گوینده ۲", "گوینده ۳"]);
     expect(out.every((t) => t.uncertain)).toBe(true);
   });
 
   it("overlap below minimum is uncertain", () => {
     const out = assignSpeakers([T(0, 500, "S1")], [iv("Reza", 0, 500)]);
-    expect(out[0].speaker).toBe("Speaker 1");
+    expect(out[0].speaker).toBe("گوینده ۱");
     expect(out[0].uncertain).toBe(true);
   });
 
@@ -59,7 +59,7 @@ describe("speakers", () => {
   it("partial log coverage is uncertain", () => {
     const log = [iv("Sina", 10000, 10850), iv("Sina", 30000, 30850)];
     const out = assignSpeakers([T(0, 60000, "S2")], log);
-    expect(out[0].speaker).toBe("Speaker 1");
+    expect(out[0].speaker).toBe("گوینده ۱");
     expect(out[0].uncertain).toBe(true);
   });
 
@@ -68,6 +68,6 @@ describe("speakers", () => {
     let out = assignSpeakers([T(0, 3000, "S1"), T(10000, 12000, "S1")], log);
     expect(out.map((t) => [t.speaker, t.uncertain])).toEqual([["Reza", false], ["Reza", false]]);
     out = assignSpeakers([T(0, 3000, "S1"), T(10000, 14000, "S1")], log);
-    expect(out.every((t) => t.speaker === "Speaker 1" && t.uncertain)).toBe(true);
+    expect(out.every((t) => t.speaker === "گوینده ۱" && t.uncertain)).toBe(true);
   });
 });
