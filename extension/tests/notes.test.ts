@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildNotesPrompt, renderCodeEvidence, splitNotesOutput, stripCodePaths, NotesError, NOTES_MAX_TOKENS } from "../src/lib/notes";
+import {
+  buildNotesPrompt, renderCodeEvidence, splitNotesOutput, splitReportOutput, stripCodePaths, stripReportCodePaths,
+  NotesError, NOTES_MAX_TOKENS, REPORT_MARK,
+} from "../src/lib/notes";
+import { parseReport } from "../src/lib/report";
 import { TEMPLATES } from "../src/lib/templates";
 import type { MeetingType } from "../src/types";
 
@@ -48,14 +52,15 @@ describe("templates", () => {
   });
   it("neverReplacesSpeakerLabelsWithNames", () => {
     const rule =
-      "Never replace a `Speaker N` label with a participant name, even if the participants list suggests who it might be. " +
-      "A person section or item for an uncertain speaker uses the `Speaker N` label and is marked (uncertain).";
+      "Never replace a `گوینده N` label with a participant name, even if the participants list suggests who it might be. " +
+      "A person section or item for an uncertain speaker uses the `گوینده N` label and is marked (uncertain).";
     expect(Object.keys(TEMPLATES).sort()).toEqual(["daily", "grooming", "planning", "technical"]);
     for (const t of Object.values(TEMPLATES)) expect(t).toContain(rule);
   });
   it("use the new markers", () => {
     for (const t of Object.values(TEMPLATES)) {
-      expect(t).toContain("<<<SUMMARY>>>");
+      expect(t).toContain("<<<REPORT>>>");
+      expect(t).not.toContain("<<<SUMMARY>>>");
       expect(t).not.toContain("<<<EMAIL>>>");
     }
   });
@@ -202,5 +207,43 @@ describe("stripCodePaths", () => {
     expect(stripCodePaths(t, undefined)).toBe(t);
     expect(stripCodePaths(t, { status: "skipped", reason: "off" })).toBe(t);
     expect(stripCodePaths("سرویس maserati", cs)).toBe("سرویس maserati");
+  });
+});
+
+describe("report output", () => {
+  it("splits the report JSON and the notes", () => {
+    const out = splitReportOutput('<<<REPORT>>>\n{"title":"ت","decisions":[{"text":"d","at":"01:02"}]}\n<<<NOTES>>>\n# N');
+    expect(REPORT_MARK).toBe("<<<REPORT>>>");
+    expect(out.report.title).toBe("ت");
+    expect(out.report.decisions).toEqual([{ text: "d", at: "01:02" }]);
+    expect(out.notesMd).toBe("# N");
+  });
+  it.each(["just text", '<<<REPORT>>>\n{"title":"ت"}', '<<<REPORT>>>\n{"title":"ت"}\n<<<NOTES>>>\n  \n', "<<<REPORT>>>\nnot json\n<<<NOTES>>>\nN"])(
+    "bad output raises: %j", (text) => {
+      expect(() => splitReportOutput(text)).toThrow(NotesError);
+    });
+  it("stripReportCodePaths removes evidence paths from every string", () => {
+    const cs = {
+      status: "done" as const, keywords: ["x"], limitHit: false,
+      services: [{ service: "svc", keywords: ["x"], files: [{ path: "svc/src/a.ts", snippets: [] }] }],
+    };
+    const r = parseReport(JSON.stringify({
+      title: "t", summary: ["نگاه به svc/src/a.ts کردیم"], codeServices: [{ service: "svc", reason: "در svc/src/a.ts" }],
+    }));
+    const out = stripReportCodePaths(r, cs);
+    expect(out.summary[0]).not.toContain("svc/src/a.ts");
+    expect(out.codeServices[0].reason).not.toContain("svc/src/a.ts");
+    expect(out.codeServices[0].service).toBe("svc");
+    expect(stripReportCodePaths(r, undefined)).toEqual(r);
+  });
+  it("the prompt asks for the report JSON and keeps the English notes", () => {
+    const rec = { title: "T", type: "grooming" as MeetingType, startedAt: "2026-11-12T10:00:00", durationMs: 60000, participants: ["علی"] };
+    const p = buildNotesPrompt(rec, "t", [], null);
+    for (const k of ["<<<REPORT>>>", "title", "summary", "decisions", "actions", "topics", "followUps", "codeServices", "owner", "due", "at"]) expect(p).toContain(k);
+    expect(p).toContain("character for character");
+    expect(p).toContain("## Tasks");
+    expect(p).toContain("<<<NOTES>>>");
+    const d = buildNotesPrompt({ ...rec, type: "daily" }, "t", [], null);
+    for (const k of ["people", "yesterday", "today", "blockers", "person"]) expect(d).toContain(k);
   });
 });
