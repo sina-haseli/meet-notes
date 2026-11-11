@@ -14,6 +14,9 @@ import { audioFileName } from "./lib/download";
 import { readServicesContext } from "./lib/servicesContext";
 import type { PermissionQueryable } from "./lib/servicesSnapshot";
 import { el, saveBlob, twoClick } from "./lib/dom";
+import { voicesOf, type Clip } from "./lib/voices";
+import { clipBlob, renderVoiceCards } from "./voiceCards";
+import { faNum } from "./lib/report";
 
 const SAVE_DEBOUNCE_MS = 800;
 const POLL_MS = 1000;
@@ -117,7 +120,8 @@ function renderBanners(r: MeetingRecord): void {
   // progress: queued / processing / still recording
   const step = stepText(r);
   const recording = r.status === "recording";
-  $("progressCard").hidden = !step && !recording;
+  $("progressCard").hidden = (!step && !recording) || r.status === "naming";
+  renderNaming(r);
   if (step) {
     $("stepLine").textContent = step;
     $("progressBar").hidden = false;
@@ -148,6 +152,72 @@ function renderBanners(r: MeetingRecord): void {
   $("noticeCard").hidden = !(r.servicesNotice && isEditable(r));
   $<HTMLButtonElement>("allowRetry").disabled = busy;
 }
+
+// ================= voice naming =================
+
+const player = new Audio();
+let playerUrl: string | undefined;
+let finishPlay: (() => void) | undefined;
+let namingFor = "";
+let names: (() => Record<string, string>) | undefined;
+
+function stopPlayer(): void {
+  player.pause();
+  if (playerUrl) URL.revokeObjectURL(playerUrl);
+  playerUrl = undefined;
+  finishPlay?.();
+  finishPlay = undefined;
+}
+
+async function playClip(clip: Clip): Promise<void> {
+  const blob = await clipBlob(id, clip);
+  stopPlayer();
+  playerUrl = URL.createObjectURL(blob);
+  player.src = playerUrl;
+  await new Promise<void>((resolve, reject) => {
+    finishPlay = resolve;
+    player.onended = () => resolve();
+    player.onerror = () => reject(new Error("playback failed"));
+    player.play().catch(reject);
+  });
+}
+
+function renderNaming(r: MeetingRecord): void {
+  const on = r.status === "naming";
+  $("namingCard").hidden = !on;
+  if (!on) {
+    stopPlayer();
+    namingFor = "";
+    return;
+  }
+  if (namingFor === r.id) return; // keep typed names across polls
+  namingFor = r.id;
+  const voices = voicesOf(r.turns ?? []);
+  $("namingSub").textContent = `${faNum(voices.length)} صدا شناسایی شد. هر صدا را گوش کنید و نامش را تأیید یا وارد کنید.`;
+  setMsg("namingMsg", "");
+  names = renderVoiceCards($("voices"), voices, { audio: !r.audioDeleted, play: playClip, stop: stopPlayer }).names;
+}
+
+$("confirmNames").addEventListener("click", async () => {
+  if (!names) return;
+  const btn = $<HTMLButtonElement>("confirmNames");
+  btn.disabled = true;
+  setMsg("namingMsg", "");
+  try {
+    const ack = await send({ type: "confirm-names", meetingId: id, names: names() });
+    if (!ack?.ok) throw new Error(ack?.error || "Could not confirm the names.");
+    stopPlayer();
+    const next = await getMeeting(id);
+    if (next) {
+      rec = next;
+      render(next);
+    }
+  } catch (e) {
+    setMsg("namingMsg", e instanceof Error ? e.message : String(e), true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ================= speakers =================
 
