@@ -115,3 +115,11 @@ describe("popupView", () => {
     expect(keyCheckText(res)).toBe("OpenRouter rejected your API key. Check that you pasted the whole key.");
   });
 });
+
+describe("naming status", () => {
+  it("shows a waiting badge and step line", () => {
+    const r = rec({ status: "naming" });
+    expect(badgeFor(r)).toEqual({ cls: "processing", text: "منتظر نام گوینده‌ها" });
+    expect(stepText(r)).toBe("منتظر نام گوینده‌ها");
+  });
+});

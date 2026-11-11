@@ -23,6 +23,7 @@ import { stateAfterFailure } from "./lib/failureState";
 import { audioFileName, downloadAndWait } from "./lib/download";
 import { getSettings, type Settings } from "./lib/settings";
 import { meetingId } from "./lib/slug";
+import { applyNames } from "./lib/voices";
 import {
   deleteMeeting,
   getHandle,
@@ -162,10 +163,10 @@ function sendToOffscreen<R>(msg: ToOffscreen): Promise<R | undefined> {
 }
 
 /** Ensures the document and queues `id` for processing there. */
-async function sendProcess(id: string): Promise<Ack> {
+async function sendProcess(id: string, front = false): Promise<Ack> {
   try {
     await ensureOffscreen();
-    const res = await sendToOffscreen<Ack>({ target: "offscreen", type: "process", meetingId: id });
+    const res = await sendToOffscreen<Ack>({ target: "offscreen", type: "process", meetingId: id, front });
     return res?.ok ? { ok: true } : { ok: false, error: res?.error ?? "Processing could not start. Try again." };
   } catch (e) {
     console.warn("could not start processing", e);
@@ -571,8 +572,10 @@ async function processed(msg: Extract<FromOffscreen, { type: "processed" }>): Pr
       console.warn("could not mark the meeting as failed", e);
     }
   }
-  if (rec && !(await meetingTabOpen(rec.id))) {
-    const options: chrome.notifications.NotificationCreateOptions = msg.ok
+  if (rec && (msg.status === "naming" || !(await meetingTabOpen(rec.id)))) {
+    const options: chrome.notifications.NotificationCreateOptions = msg.status === "naming"
+      ? { type: "basic", iconUrl: notifyIcon(), title: "نام گوینده‌ها را تأیید کنید", message: rec.title }
+      : msg.ok
       ? { type: "basic", iconUrl: notifyIcon(), title: "Notes ready", message: rec.title || "Your meeting" }
       : {
           type: "basic",
@@ -647,6 +650,18 @@ async function retryMeeting(id: string): Promise<Ack> {
   nudged.delete(id);
   const res = await sendProcess(id);
   if (!res.ok) await updateMeeting(id, { status: "error" }).catch(() => undefined);
+  return res;
+}
+
+async function confirmNames(id: string, names: Record<string, string>): Promise<Ack> {
+  const rec = await getMeeting(id);
+  if (!rec || rec.mode !== "builtin") return { ok: false, error: "This meeting was not found." };
+  if (rec.status !== "naming") return { ok: false, error: "This meeting is not waiting for names." };
+  await updateMeeting(id, { turns: applyNames(rec.turns ?? [], names), namesConfirmedAt: Date.now(), status: "queued" });
+  nudged.delete(id);
+  const res = await sendProcess(id, true);
+  // Keep the applied names, but let the user confirm again.
+  if (!res.ok) await updateMeeting(id, { status: "naming", namesConfirmedAt: undefined }).catch(() => undefined);
   return res;
 }
 
@@ -770,6 +785,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       break;
     case "retry-meeting":
       work = serial(() => retryMeeting(m.meetingId));
+      break;
+    case "confirm-names":
+      work = serial(() => confirmNames(m.meetingId, m.names));
       break;
     case "delete-meeting":
       work = serial(() => removeMeeting(m.meetingId));

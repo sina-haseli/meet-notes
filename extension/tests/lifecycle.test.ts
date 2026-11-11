@@ -148,3 +148,14 @@ describe("shouldResumeOnPoll", () => {
     expect(shouldResumeOnPoll([rec("r", "ready", 1), rec("e", "error", 2)], false)).toBe(false);
   });
 });
+
+describe("a meeting waiting for speaker names", () => {
+  const naming = rec("n", "naming", 1);
+  it("is not resumed, interrupted, stuck or failed", () => {
+    expect(recordsToResume([naming])).toEqual([]);
+    expect(recordsInterrupted([naming], undefined)).toEqual([]);
+    expect(isStuck(naming, false)).toBe(false);
+    expect(shouldResumeOnPoll([naming], false)).toBe(false);
+    expect(failedRunPatch({ status: "naming" }, false)).toBeNull();
+  });
+});

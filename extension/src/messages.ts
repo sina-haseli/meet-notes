@@ -1,4 +1,4 @@
-import type { MeetingType, SpeakerInterval, UploadMeta } from "./types";
+import type { MeetingStatus, MeetingType, SpeakerInterval, UploadMeta } from "./types";
 import type { Settings } from "./lib/settings";
 
 export type RecState = "idle" | "recording" | "uploading" | "upload-failed" | "done";
@@ -28,6 +28,8 @@ export type PopupMsg =
   | { type: "process-saved"; meetingId: string }
   /** Built-in: process an `error` meeting again (resumes where it failed). */
   | { type: "retry-meeting"; meetingId: string }
+  /** Built-in: the speaker names for a `naming` meeting; the report is then written. */
+  | { type: "confirm-names"; meetingId: string; names: Record<string, string> }
   /** Deletes a meeting and its audio; refused while it is recording or processing. */
   | { type: "delete-meeting"; meetingId: string };
 
@@ -61,7 +63,7 @@ export type ToOffscreen =
   | { target: "offscreen"; type: "retry-upload"; token: string; url: string }
   | { target: "offscreen"; type: "export-audio" }
   | { target: "offscreen"; type: "stop-builtin"; meetingId: string; log: SpeakerInterval[]; participants: string[] }
-  | { target: "offscreen"; type: "process"; meetingId: string };
+  | { target: "offscreen"; type: "process"; meetingId: string; front?: boolean };
 export interface OffscreenStartAck extends Ack {
   t0?: number;
 }
@@ -74,7 +76,7 @@ export interface ExportAudioAck extends Ack {
 export type FromOffscreen =
   | { target: "background"; type: "upload-result"; ok: boolean; id?: string; error?: string }
   | { target: "background"; type: "tab-ended" }
-  | { target: "background"; type: "processed"; meetingId: string; ok: boolean }
+  | { target: "background"; type: "processed"; meetingId: string; ok: boolean; status: MeetingStatus }
   /** Not recording and nothing queued or being processed: the document may be closed. */
   | { target: "background"; type: "offscreen-idle" }
   /** R5: the offscreen doc has no chrome.storage; the background replies with GetSettingsReply. */
