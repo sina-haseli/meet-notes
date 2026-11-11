@@ -591,10 +591,11 @@ function render(r: MeetingRecord, overwrite = false): void {
   renderTranscript(r);
   if (tab === "screens") void loadScreens();
   else if (!screensKey) void loadScreens(); // fills the tab's count
-  for (const b of ["copySummary", "openGmail", "copyReport", "gmailReport", "copyNotes", "downloadZip", "copyTranscript", "downloadTranscript"]) {
+  for (const b of ["copySummary", "openGmail", "copyReport", "gmailReport", "pdfReport", "copyNotes", "downloadZip", "copyTranscript", "downloadTranscript"]) {
     $<HTMLButtonElement>(b).disabled = isWorking(r) && b !== "copyTranscript" && b !== "downloadTranscript";
   }
   $<HTMLButtonElement>("renameSpeakers").disabled = !canRenameLater(r);
+  if (!reportDraft) $<HTMLButtonElement>("pdfReport").disabled = true;
 }
 
 // ================= actions =================
@@ -650,6 +651,14 @@ btn("copyReport").addEventListener("click", () =>
     await copyRich(reportToHtml(reportDraft, rec, turns, { timestamps: false }), reportToMarkdown(reportDraft, rec, turns));
   }),
 );
+btn("pdfReport").addEventListener("click", async () => {
+  await flush();
+  if (!rec || !reportDraft) return;
+  const previous = document.title;
+  document.title = reportDraft.title || displayTitle(rec);
+  window.addEventListener("afterprint", () => (document.title = previous), { once: true });
+  window.print();
+});
 btn("gmailReport").addEventListener("click", () => {
   if (rec) void chrome.tabs.create({ url: gmailComposeUrl(meetingSubject({ ...rec, title: reportDraft?.title ?? rec.title })) });
 });

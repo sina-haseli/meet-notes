@@ -6,6 +6,7 @@
   <title>Meeting - Meet Notes</title>
   <link rel="stylesheet" href="theme.css" />
   <style>
+    @font-face { font-family: Vazirmatn; src: url("fonts/Vazirmatn.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
     .wrap { max-width: 900px; margin: 0 auto; }
     .mn-header { padding-bottom: 58px; }
     .mn-header .mn-title { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -113,7 +114,20 @@
     .report .del { visibility: hidden; border: 0; background: none; color: #b42318; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
     .report tr:hover .del, .report h3:hover .del, .report li:hover .del { visibility: visible; }
     .report .del:disabled { display: none; }
-    @media print { .report .del { display: none; } }
+    @media print {
+      @page { size: A4; margin: 18mm 16mm 20mm; }
+      html, body { background: #fff !important; }
+      .mn-header, .tabs, .toolbar, .rename-panel, .cards > .mn-card:not(#mainCard), .pane:not(#pane-report), .foot, .pagefoot, .lightbox { display: none !important; }
+      #mainCard > .mn-row, #mainCard > .mn-seg { display: none !important; }
+      .wrap { max-width: none; margin: 0; }
+      .cards, #mainCard, #pane-report { margin: 0; padding: 0; border: 0; box-shadow: none; background: none; }
+      .report-box { border: 0; border-radius: 0; overflow: visible; }
+      .report { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report .ts, .report .del { display: none !important; }
+      .report tr { break-inside: avoid; }
+      .report h1, .report h2, .report h3 { break-after: avoid; }
+      .report [data-path], .report [data-path]:hover, .report [data-path]:focus { outline: none; background: none; box-shadow: none; }
+    }
     .rename-panel { background: #fafafe; color: #222; border: 1px solid var(--mn-border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
     #renameVoices { display: grid; gap: 10px; }
 
@@ -219,7 +233,7 @@
             <button class="mn-btn-ghost" id="renameSpeakers" title="نام گوینده‌ها را در گزارش، متن جلسه و یادداشت فنی عوض کنید">نام گوینده‌ها</button>
             <button class="mn-btn-ghost" id="gmailReport" title="پیش‌نویس Gmail با موضوع جلسه باز می‌شود؛ گزارش را در آن بچسبانید.">Gmail</button>
             <button class="mn-btn" id="copyReport">کپی</button>
-            <!-- Task 8: دانلود PDF -->
+            <button class="mn-btn-ghost" id="pdfReport" title="گزارش را به‌صورت PDF ذخیره کنید">دانلود PDF</button>
           </div>
           <div class="rename-panel" id="renamePanel" hidden>
             <div id="renameVoices"></div>

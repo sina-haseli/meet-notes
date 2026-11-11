@@ -41,3 +41,7 @@ if (existsSync("src/ui")) {
     if (f.endsWith(".css")) copyFileSync(`src/ui/${f}`, `dist/${f}`);
   }
 }
+
+// Vazirmatn (SIL OFL 1.1) so the report and its PDF show joined Persian letters on any machine.
+mkdirSync("dist/fonts", { recursive: true });
+copyFileSync("node_modules/vazirmatn/fonts/webfonts/Vazirmatn[wght].woff2", "dist/fonts/Vazirmatn.woff2");
